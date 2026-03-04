@@ -39,15 +39,14 @@ export default function App() {
     if (!hasSupabase) return
     Promise.all([
       supabase.from('materials').select('*').eq('is_active', true),
-      supabase.from('accessories_pricing').select('*'),
+      supabase.from('accessories').select('*').eq('is_active', true),
       supabase.from('commercial_settings').select('*'),
       supabase.from('skus').select('*').eq('is_active', true).order('created_at', { ascending: false }),
     ]).then(([mR, aR, cR, sR]) => {
       if (mR.data?.length) setMaterials(mR.data)
       if (aR.data?.length) setAccessories(aR.data)
       if (cR.data?.length) {
-        const c = {}
-        cR.data.forEach(r => { c[r.key] = r.value })
+        const c = {}; cR.data.forEach(r => { c[r.key] = r.value })
         setCommercial(p => ({ ...p, ...c }))
       }
       if (sR.data?.length) setSkus(sR.data)
@@ -72,31 +71,24 @@ export default function App() {
   function handleSaveSku(data) {
     if (editingSku?._isNew) {
       if (!data.sku_code) data.sku_code = 'SKU-' + Date.now().toString(36).toUpperCase()
-      setSkus(p => [...p, data])
-      toast('SKU added')
+      setSkus(p => [...p, data]); toast('SKU added')
     } else {
-      setSkus(p => p.map(s => s.sku_code === editingSku.sku_code ? data : s))
-      toast('SKU updated')
+      setSkus(p => p.map(s => s.sku_code === editingSku.sku_code ? data : s)); toast('SKU updated')
     }
     setEditingSku(null)
   }
 
   function handleSaveMat(data) {
     if (editingMat?._isNew) {
-      setMaterials(p => [...p, data])
-      toast('Material added')
+      setMaterials(p => [...p, data]); toast('Material added')
     } else {
-      setMaterials(p => p.map(m => m.material_id === editingMat.material_id ? data : m))
-      toast('Material updated')
+      setMaterials(p => p.map(m => m.material_id === editingMat.material_id ? data : m)); toast('Material updated')
     }
     setEditingMat(null)
   }
 
-  /* ── RENDER ─────────────────────────────────────────────────────────── */
   return (
     <div style={{ display:'flex', height:'100vh', background:COLORS.bg, color:COLORS.text, overflow:'hidden', fontFamily:"'DM Sans','Segoe UI',sans-serif" }}>
-
-      {/* ── SIDEBAR ── */}
       {sidebarOpen && (
         <aside style={{ width:240, background:COLORS.surface, borderRight:`1px solid ${COLORS.border}`, display:'flex', flexDirection:'column', flexShrink:0, height:'100vh' }}>
           <div style={{ padding:'14px 16px', borderBottom:`1px solid ${COLORS.border}` }}>
@@ -106,11 +98,10 @@ export default function App() {
               </div>
               <div>
                 <div style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:15, letterSpacing:'-0.02em', color:COLORS.accent }}>SKU Intel</div>
-                <div style={{ fontSize:10, color:COLORS.textMuted }}>Cost Engine v2.0</div>
+                <div style={{ fontSize:10, color:COLORS.textMuted }}>Cost Engine v3.0</div>
               </div>
             </div>
           </div>
-
           <nav style={{ padding:'10px 8px', flex:1 }}>
             {navItems.map(n => {
               const active = view === n.id
@@ -127,7 +118,6 @@ export default function App() {
               )
             })}
           </nav>
-
           <div style={{ padding:'12px 16px', borderTop:`1px solid ${COLORS.border}` }}>
             <div style={{ fontSize:11, color:COLORS.textMuted, marginBottom:6 }}>Catalog</div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
@@ -138,69 +128,35 @@ export default function App() {
         </aside>
       )}
 
-      {/* ── MAIN AREA ── */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
         <header style={{ height:52, background:COLORS.surface, borderBottom:`1px solid ${COLORS.border}`, display:'flex', alignItems:'center', padding:'0 20px', gap:10, flexShrink:0 }}>
           <button onClick={() => setSidebarOpen(p => !p)} style={{ background:'none', border:'none', color:COLORS.textMuted, cursor:'pointer', padding:'4px 6px', borderRadius:6 }}>
             <Icon name="menu" size={18} />
           </button>
-          <span style={{ fontSize:12, color:COLORS.textMuted }}>
-            {new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}
-          </span>
+          <span style={{ fontSize:12, color:COLORS.textMuted }}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</span>
           <div style={{ marginLeft:'auto' }} />
           <div style={{ display:'flex', alignItems:'center', background:COLORS.bg, border:`1px solid ${COLORS.border}`, borderRadius:8, overflow:'hidden' }}>
             <button onClick={() => setIsDark(!isDark)} style={{ background:'none', border:'none', padding:'5px 10px', cursor:'pointer', color:COLORS.textDim, display:'flex', alignItems:'center', gap:6, fontFamily:'inherit' }}>
-              <Icon name={isDark ? 'sun' : 'moon'} size={15} color={COLORS.textMuted} />
-              <span style={{ fontSize:12, fontWeight:600 }}>{isDark ? 'Light' : 'Dark'}</span>
+              <Icon name={isDark?'sun':'moon'} size={15} color={COLORS.textMuted} />
+              <span style={{ fontSize:12, fontWeight:600 }}>{isDark?'Light':'Dark'}</span>
             </button>
           </div>
         </header>
 
         <main style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
           <div style={{ flex:1, overflowY:'auto' }}>
-            {view === 'catalog' && (
-              <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts}
-                setSelectedSku={setSelectedSku} setEditingSku={setEditingSku}
-                toast={toast} materials={materials} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />
-            )}
-            {view === 'calculator' && (
-              <CalculatorPage materials={materials} accessories={accessories}
-                commercial={commercial} setSkus={setSkus} toast={toast}
-                prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)}
-                catDefaults={CATEGORY_MATERIAL_DEFAULTS} />
-            )}
-            {view === 'analytics' && (
-              <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} />
-            )}
-            {view === 'pricing' && (
-              <PricingPage materials={materials} setMaterials={setMaterials}
-                accessories={accessories} setAccessories={setAccessories}
-                commercial={commercial} setCommercial={setCommercial}
-                setEditingMat={setEditingMat} toast={toast} />
-            )}
+            {view==='catalog'&&<CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS}/>}
+            {view==='calculator'&&<CalculatorPage materials={materials} accessories={accessories} commercial={commercial} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={()=>setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS}/>}
+            {view==='analytics'&&<AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku}/>}
+            {view==='pricing'&&<PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast}/>}
           </div>
         </main>
       </div>
 
-      {/* ── MODALS ── */}
-      {selectedSku && (
-        <SKUDetailModal sku={selectedSku} materials={materials}
-          accessories={accessories} commercial={commercial}
-          onClose={() => setSelectedSku(null)}
-          onEdit={() => { setEditingSku({ ...selectedSku }); setSelectedSku(null) }}
-          onCalc={() => { setCalcPrefill(selectedSku); setView('calculator'); setSelectedSku(null) }} />
-      )}
-      {editingSku && (
-        <EditSKUModal sku={editingSku} materials={materials}
-          catDefaults={CATEGORY_MATERIAL_DEFAULTS}
-          onSave={handleSaveSku} onClose={() => setEditingSku(null)} />
-      )}
-      {editingMat && (
-        <EditMaterialModal mat={editingMat}
-          onSave={handleSaveMat} onClose={() => setEditingMat(null)} />
-      )}
-
-      <ToastContainer toasts={toasts} />
+      {selectedSku&&<SKUDetailModal sku={selectedSku} materials={materials} accessories={accessories} commercial={commercial} onClose={()=>setSelectedSku(null)} onEdit={()=>{setEditingSku({...selectedSku});setSelectedSku(null)}} onCalc={()=>{setCalcPrefill(selectedSku);setView('calculator');setSelectedSku(null)}}/>}
+      {editingSku&&<EditSKUModal sku={editingSku} materials={materials} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onSave={handleSaveSku} onClose={()=>setEditingSku(null)}/>}
+      {editingMat&&<EditMaterialModal mat={editingMat} onSave={handleSaveMat} onClose={()=>setEditingMat(null)}/>}
+      <ToastContainer toasts={toasts}/>
     </div>
   )
 }
