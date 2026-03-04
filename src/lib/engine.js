@@ -11,13 +11,14 @@
 function generatePanels(sku, matMap) {
   const { width_cm:w, depth_cm:d, height_cm:h, doors_count:dc, shelves_count:sc,
           partitions_count:pc, body_material_id:bm, back_material_id:bkm, door_material_id:dm,
-          has_sliding_system:sl, door_type:dt } = sku
+          door_type:dt } = sku
   const bodyMat = matMap[bm], backMat = matMap[bkm], doorMat = matMap[dm]
   if (!bodyMat) return { error: `Body material "${bm}" not found`, panels: [] }
   if (!backMat) return { error: `Back material "${bkm}" not found`, panels: [] }
 
-  // Only generate wood door panels for Hinged doors (not Sliding/Open)
-  const hasWoodDoors = dc > 0 && !sl && dt !== 'Open' && dt !== 'Sliding'
+  // Wood door panels for Hinged AND Sliding (both are wood doors)
+  // Open = no door panels
+  const hasWoodDoors = dc > 0 && dt !== 'Open'
   if (hasWoodDoors && !doorMat) return { error: `Door material "${dm}" not found`, panels: [] }
 
   const panels = []
@@ -55,9 +56,13 @@ function calcEdge(panels, edgePricePerM) {
 }
 
 function calcAccessories(sku, accList, useGood) {
-  const { doors_count:dc, drawers_count:dwc, shelves_count:sc, has_sliding_system:sl,
+  const { doors_count:dc, drawers_count:dwc, shelves_count:sc,
           has_mirror:mir, mirror_count:mirC, width_cm:w, height_cm:h, depth_cm:d,
-          handle_type:ht } = sku
+          handle_type:ht, door_type:dt } = sku
+  const isSliding = dt === 'Sliding'
+  const isOpen = dt === 'Open'
+  const isHinged = !isSliding && !isOpen
+
   const byId = {}; accList.forEach(a => { byId[a.acc_id] = a })
   const items = []
   const gp = (id) => { const a = byId[id]; return a ? (useGood ? (a.price_good||a.price) : a.price) : 0 }
@@ -66,33 +71,51 @@ function calcAccessories(sku, accList, useGood) {
     if (d <= 47) return 'SLIDE_45'; if (d <= 52) return 'SLIDE_50'; return 'SLIDE_55'
   }
 
-  if (dc > 0 && !sl) {
+  // 1. HINGES — only for Hinged doors (3 per door)
+  if (dc > 0 && isHinged) {
     const hid = 'HINGE_FULL', qty = dc * 3
     items.push({ name: byId[hid]?.name||'Hinge', acc_id:hid, qty, unit_price:gp(hid), cost: qty*gp(hid) })
   }
+
+  // 2. SLIDING TRACK/LATCH — only for Sliding doors (1 track per door)
+  //    مجرى لطش = sliding rail/latch for wood sliding doors
+  //    NOT ضلفة زجاج جرار which is a glass mirror sliding door product
+  if (dc > 0 && isSliding) {
+    items.push({ name: byId['LATCH_SLIDE']?.name||'Sliding Track', acc_id:'LATCH_SLIDE', qty:dc, unit_price:gp('LATCH_SLIDE'), cost: dc*gp('LATCH_SLIDE') })
+  }
+
+  // 3. DRAWER SLIDES — auto-select by depth
   if (dwc > 0) {
     const sid = findSlide()
     items.push({ name: byId[sid]?.name||'Drawer Slide', acc_id:sid, qty:dwc, unit_price:gp(sid), cost: dwc*gp(sid) })
   }
-  if ((dc + dwc > 0) && ht !== 'Handleless') {
-    const hid = 'HANDLE_128', qty = dc + dwc
-    items.push({ name: byId[hid]?.name||'Handle', acc_id:hid, qty, unit_price:gp(hid), cost: qty*gp(hid) })
+
+  // 4. HANDLES — based on Handle Type attribute
+  //    Handleless = no handles; Normal = handles on doors + drawers
+  //    For Sliding: handles are recessed/grip type (HANDLE_SLIDE20)
+  if (ht !== 'Handleless') {
+    const totalHandles = dc + dwc
+    if (totalHandles > 0) {
+      const hid = isSliding ? 'HANDLE_SLIDE20' : 'HANDLE_128'
+      items.push({ name: byId[hid]?.name||'Handle', acc_id:hid, qty:totalHandles, unit_price:gp(hid), cost: totalHandles*gp(hid) })
+    }
   }
+
+  // 5. SHELF SUPPORTS — 4 pins per shelf
   if (sc > 0) {
     const qty = sc * 4
     items.push({ name:'Shelf Supports', acc_id:'SHELF_SUPPORT', qty, unit_price:gp('SHELF_SUPPORT'), cost: qty*gp('SHELF_SUPPORT') })
   }
-  if (sl) {
-    const slideQty = dc || 1
-    items.push({ name: byId['GLASS_SLIDE']?.name||'Sliding Door', acc_id:'GLASS_SLIDE', qty:slideQty, unit_price:gp('GLASS_SLIDE'), cost: slideQty*gp('GLASS_SLIDE') })
-    items.push({ name: byId['LATCH_SLIDE']?.name||'Slide Latch', acc_id:'LATCH_SLIDE', qty:slideQty, unit_price:gp('LATCH_SLIDE'), cost: slideQty*gp('LATCH_SLIDE') })
-  }
+
+  // 6. MIRROR — area-based (Has Mirror=YES, Mirror Count)
+  //    Mirror is a flat sheet glued to a door or wall, priced per m²
   if (mir) {
     const mc = Number(mirC) || dc || 1
     const mirrorW = dc > 0 ? w / dc : w
     const area = (h * mirrorW * mc) / 10000
     items.push({ name:'Mirror', acc_id:'MIRROR_M2', qty:mc, area_m2:area, unit_price:gp('MIRROR_M2'), cost: area*gp('MIRROR_M2') })
   }
+
   return { items, total: items.reduce((s, i) => s + i.cost, 0) }
 }
 
