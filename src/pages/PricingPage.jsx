@@ -1,117 +1,233 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { COLORS } from '../lib/constants'
 import { fmt } from '../lib/engine'
 import { Icon, Btn, Card } from '../components/UI'
 
-const iSt = () => ({
-  width: '100%', background: COLORS.inputBg, border: `1px solid ${COLORS.border}`,
-  borderRadius: 8, padding: '8px 12px', color: COLORS.text, fontSize: 13,
-  outline: 'none', lineHeight: 1.5, fontFamily: 'inherit',
-})
-const lSt = () => ({
-  fontSize: 11, fontWeight: 700, color: COLORS.textMuted,
-  letterSpacing: '0.06em', textTransform: 'uppercase',
-  display: 'block', marginBottom: 6, lineHeight: 1.4,
-})
+const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
+const lSt=()=>({fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase',display:'block',marginBottom:6,lineHeight:1.4})
 
-export default function PricingPage({ materials, setMaterials, accessories, setAccessories, commercial, setCommercial, setEditingMat, toast }) {
-  const [accForm, setAccForm] = useState({ ...accessories })
-  const [comForm, setComForm] = useState({ ...commercial })
+export default function PricingPage({ materials, setMaterials, accessories, setAccessories, commercial, setCommercial, setEditingMat, setEditingAcc, toast }) {
+  const [matSearch, setMatSearch] = useState('')
+  const [accSearch, setAccSearch] = useState('')
+  const [accGroup, setAccGroup] = useState('All')
+  const [tab, setTab] = useState('materials')
+  const matImportRef = useRef()
+  const accImportRef = useRef()
 
-  function savePricing() {
-    setAccessories({ ...accForm })
-    setCommercial({ ...comForm })
-    toast('Pricing configuration updated')
+  // Inline price edit for materials
+  function updateMatPrice(mid, field, val) {
+    setMaterials(prev => prev.map(m => m.material_id === mid ? { ...m, [field]: Number(val) } : m))
+  }
+  function updateAccPrice(aid, field, val) {
+    setAccessories(prev => prev.map(a => a.acc_id === aid ? { ...a, [field]: Number(val) } : a))
   }
 
-  function AccField({ label, k, unit }) {
-    return (
-      <div>
-        <label style={lSt()}>{label}</label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input type="number" value={accForm[k]} onChange={e => setAccForm(p => ({ ...p, [k]: Number(e.target.value) }))} style={iSt()} min={0} />
-          {unit && <span style={{ fontSize: 11, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>{unit}</span>}
-        </div>
-      </div>
-    )
+  // Mass CSV import for material prices
+  function handleMatImport(e) {
+    const file = e.target.files?.[0]; if(!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      try {
+        const lines = ev.target.result.split('\n').filter(l=>l.trim())
+        const hdrs = lines[0].split(',').map(h=>h.trim())
+        let updated = 0
+        for (let i=1;i<lines.length;i++) {
+          const vals = lines[i].split(',')
+          const row = {}; hdrs.forEach((h,j)=>{row[h]=vals[j]?.trim()})
+          const mid = row.material_id || row.ID
+          if (!mid) continue
+          setMaterials(prev => prev.map(m => {
+            if (m.material_id === mid) {
+              updated++
+              return { ...m,
+                price: row.price ? Number(row.price) : m.price,
+                price_good: row.price_good ? Number(row.price_good) : m.price_good,
+                name: row.name || m.name,
+              }
+            }
+            return m
+          }))
+        }
+        toast(`Updated ${updated} material prices`)
+      } catch(err) { toast('Import error: '+err.message,'error') }
+    }
+    reader.readAsText(file); e.target.value=''
   }
+
+  function handleAccImport(e) {
+    const file = e.target.files?.[0]; if(!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      try {
+        const lines = ev.target.result.split('\n').filter(l=>l.trim())
+        const hdrs = lines[0].split(',').map(h=>h.trim())
+        let updated = 0
+        for (let i=1;i<lines.length;i++) {
+          const vals = lines[i].split(',')
+          const row = {}; hdrs.forEach((h,j)=>{row[h]=vals[j]?.trim()})
+          const aid = row.acc_id || row.ID
+          if (!aid) continue
+          setAccessories(prev => prev.map(a => {
+            if (a.acc_id === aid) {
+              updated++
+              return { ...a,
+                price: row.price ? Number(row.price) : a.price,
+                price_good: row.price_good ? Number(row.price_good) : a.price_good,
+              }
+            }
+            return a
+          }))
+        }
+        toast(`Updated ${updated} accessory prices`)
+      } catch(err) { toast('Import error: '+err.message,'error') }
+    }
+    reader.readAsText(file); e.target.value=''
+  }
+
+  function exportMatCSV() {
+    const h = 'material_id,name,thickness_mm,price,price_good'
+    const rows = materials.map(m=>`${m.material_id},"${m.name}",${m.thickness_mm},${m.price},${m.price_good||m.price}`)
+    const blob = new Blob([[h,...rows].join('\n')],{type:'text/csv'})
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='materials_prices.csv';a.click()
+    toast('Material prices exported')
+  }
+
+  function exportAccCSV() {
+    const h = 'acc_id,name,unit,group,price,price_good'
+    const rows = accessories.map(a=>`${a.acc_id},"${a.name}",${a.unit},${a.group},${a.price},${a.price_good||a.price}`)
+    const blob = new Blob([[h,...rows].join('\n')],{type:'text/csv'})
+    const a2=document.createElement('a');a2.href=URL.createObjectURL(blob);a2.download='accessories_prices.csv';a2.click()
+    toast('Accessory prices exported')
+  }
+
+  const filteredMats = materials.filter(m => !matSearch || m.name.toLowerCase().includes(matSearch.toLowerCase()) || m.material_id.toLowerCase().includes(matSearch.toLowerCase()))
+  const accGroups = [...new Set(accessories.map(a=>a.group))]
+  const filteredAcc = accessories.filter(a => {
+    if (accGroup !== 'All' && a.group !== accGroup) return false
+    if (accSearch && !a.name.toLowerCase().includes(accSearch.toLowerCase())) return false
+    return true
+  })
+
+  const tabStyle = (t) => ({ padding:'8px 16px', fontSize:13, fontWeight:600, cursor:'pointer', borderRadius:'8px 8px 0 0', background:tab===t?COLORS.surface:'transparent', color:tab===t?COLORS.text:COLORS.textMuted, border:'none', borderBottom:tab===t?`2px solid ${COLORS.accent}`:`2px solid transparent`, fontFamily:'inherit' })
 
   return (
-    <div style={{ padding: '24px 28px', overflowY: 'auto', flex: 1 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: COLORS.text, letterSpacing: '-0.02em', marginBottom: 4 }}>Price Configuration</h2>
-          <p style={{ fontSize: 13, color: COLORS.textMuted }}>Manage raw materials, accessories, and commercial terms. All calculations pull from here.</p>
-        </div>
-        <Btn onClick={savePricing}><Icon name="check" size={14} /> Save Changes</Btn>
-      </div>
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <h2 style={{fontSize:20,fontWeight:800,color:COLORS.text,letterSpacing:'-0.02em',marginBottom:4}}>Price Configuration</h2>
+      <p style={{fontSize:13,color:COLORS.textMuted,marginBottom:20}}>Manage all pricing — edit inline or mass upload via CSV</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-        {/* Materials */}
-        <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>Raw Materials</span>
-            <Btn variant="secondary" size="sm" onClick={() => setEditingMat({ material_id: '', name: '', thickness_mm: 17, sheet_width_cm: 244, sheet_height_cm: 122, price_per_sheet: 0, _isNew: true })}>
-              <Icon name="plus" size={14} /> Add
-            </Btn>
-          </div>
-          {materials.map(m => (
-            <div key={m.material_id} style={{ background: COLORS.bg, borderRadius: 10, padding: '14px 16px', marginBottom: 8, border: `1px solid ${COLORS.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.text }}>{m.name}</div>
-                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>
-                    {m.thickness_mm}mm · Sheet: {m.sheet_width_cm}×{m.sheet_height_cm} cm · ID: {m.material_id}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button onClick={() => setEditingMat({ ...m })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: COLORS.textMuted }}><Icon name="edit" size={14} /></button>
-                  <button onClick={() => { setMaterials(prev => prev.filter(x => x.material_id !== m.material_id)); toast('Material removed') }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: COLORS.textMuted }}><Icon name="trash" size={14} /></button>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: COLORS.accent }}>{fmt(m.price_per_sheet)}</span>
-                <span style={{ fontSize: 11, color: COLORS.textMuted }}>/ sheet</span>
-              </div>
+      {/* Commercial Settings Card */}
+      <Card style={{marginBottom:20}}>
+        <div style={{fontSize:14,fontWeight:700,color:COLORS.text,marginBottom:16}}>Commercial & Overhead Settings</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:12}}>
+          {[
+            {l:'VAT %',k:'vat_percent'},
+            {l:'Commission %',k:'commission_percent'},
+            {l:'Overhead %',k:'overhead_percent'},
+            {l:'Seller Margin %',k:'seller_margin_percent'},
+          ].map(f=>(
+            <div key={f.k}>
+              <label style={lSt()}>{f.l}</label>
+              <input type="number" value={((commercial[f.k]||0)*100).toFixed(0)} onChange={e=>setCommercial(p=>({...p,[f.k]:Number(e.target.value)/100}))} style={iSt()} min={0} max={100}/>
             </div>
           ))}
-          {materials.length === 0 && <div style={{ color: COLORS.textMuted, fontSize: 13, padding: 12 }}>No materials configured. Add one above.</div>}
-        </Card>
-
-        <div>
-          {/* Accessories */}
-          <Card style={{ marginBottom: 20 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.text, display: 'block', marginBottom: 16 }}>Accessories Pricing</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <AccField label="Hinge" k="hinge_price" unit="/pc" />
-              <AccField label="Drawer Slide" k="drawer_slide_price" unit="/pair" />
-              <AccField label="Handle" k="handle_price" unit="/pc" />
-              <AccField label="Shelf Support" k="shelf_support_price" unit="/pc" />
-              <AccField label="Sliding Mechanism" k="sliding_mechanism_price" unit="/set" />
-              <AccField label="Mirror" k="mirror_price_per_m2" unit="/m²" />
-              <div style={{ gridColumn: '1/-1' }}>
-                <AccField label="Edge Banding" k="edge_banding_price_per_meter" unit="/meter" />
-              </div>
-            </div>
-          </Card>
-
-          {/* Commercial */}
-          <Card>
-            <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.text, display: 'block', marginBottom: 16 }}>Commercial Terms</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={lSt()}>VAT (%)</label>
-                <input type="number" value={(comForm.vat_percent * 100).toFixed(0)} onChange={e => setComForm(p => ({ ...p, vat_percent: Number(e.target.value) / 100 }))} style={iSt()} min={0} max={100} />
-              </div>
-              <div>
-                <label style={lSt()}>Commission (%)</label>
-                <input type="number" value={(comForm.commission_percent * 100).toFixed(0)} onChange={e => setComForm(p => ({ ...p, commission_percent: Number(e.target.value) / 100 }))} style={iSt()} min={0} max={100} />
-              </div>
-            </div>
-          </Card>
         </div>
+      </Card>
+
+      {/* Tabs */}
+      <div style={{display:'flex',gap:0,borderBottom:`1px solid ${COLORS.border}`,marginBottom:16}}>
+        <button onClick={()=>setTab('materials')} style={tabStyle('materials')}>Sheet Materials ({materials.length})</button>
+        <button onClick={()=>setTab('accessories')} style={tabStyle('accessories')}>Accessories ({accessories.length})</button>
       </div>
+
+      {tab === 'materials' && <>
+        <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+          <div style={{position:'relative',flex:1,minWidth:200}}>
+            <input value={matSearch} onChange={e=>setMatSearch(e.target.value)} placeholder="Search materials..." style={{...iSt(),paddingLeft:34}}/>
+            <div style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}><Icon name="search" size={14} color={COLORS.textMuted}/></div>
+          </div>
+          <input type="file" ref={matImportRef} accept=".csv" onChange={handleMatImport} style={{display:'none'}}/>
+          <Btn variant="secondary" size="sm" onClick={()=>matImportRef.current?.click()}><Icon name="upload" size={14}/> Upload Prices CSV</Btn>
+          <Btn variant="secondary" size="sm" onClick={exportMatCSV}><Icon name="download" size={14}/> Export CSV</Btn>
+          <Btn size="sm" onClick={()=>setEditingMat({material_id:'',name:'',thickness_mm:17,sheet_width_cm:244,sheet_height_cm:122,price:0,price_good:0,category:'mdf',_isNew:true})}><Icon name="plus" size={14}/> Add Material</Btn>
+        </div>
+        <Card style={{padding:0,overflow:'hidden'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{borderBottom:`1px solid ${COLORS.border}`}}>
+                {['ID','Name','Thickness','Price','Good Quality','',''].map((h,i)=>(
+                  <th key={i} style={{padding:'10px 14px',textAlign:i>=3?'right':'left',fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredMats.map(m=>(
+                <tr key={m.material_id} style={{borderBottom:`1px solid ${COLORS.border}`}}>
+                  <td style={{padding:'8px 14px',fontFamily:'monospace',fontSize:11,color:COLORS.accent}}>{m.material_id}</td>
+                  <td style={{padding:'8px 14px',color:COLORS.text,fontWeight:500}}>{m.name}</td>
+                  <td style={{padding:'8px 14px',color:COLORS.textDim}}>{m.thickness_mm}mm</td>
+                  <td style={{padding:'4px 8px',textAlign:'right'}}>
+                    <input type="number" value={m.price} onChange={e=>updateMatPrice(m.material_id,'price',e.target.value)} style={{...iSt(),width:100,textAlign:'right',padding:'4px 8px'}}/>
+                  </td>
+                  <td style={{padding:'4px 8px',textAlign:'right'}}>
+                    <input type="number" value={m.price_good||m.price} onChange={e=>updateMatPrice(m.material_id,'price_good',e.target.value)} style={{...iSt(),width:100,textAlign:'right',padding:'4px 8px'}}/>
+                  </td>
+                  <td style={{padding:'4px 8px'}}>
+                    <button onClick={()=>setEditingMat({...m})} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="edit" size={14}/></button>
+                  </td>
+                  <td style={{padding:'4px 8px'}}>
+                    <button onClick={()=>{setMaterials(p=>p.filter(x=>x.material_id!==m.material_id));toast('Removed')}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="trash" size={14}/></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </>}
+
+      {tab === 'accessories' && <>
+        <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+          <div style={{position:'relative',flex:1,minWidth:200}}>
+            <input value={accSearch} onChange={e=>setAccSearch(e.target.value)} placeholder="Search accessories..." style={{...iSt(),paddingLeft:34}}/>
+            <div style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}><Icon name="search" size={14} color={COLORS.textMuted}/></div>
+          </div>
+          <select value={accGroup} onChange={e=>setAccGroup(e.target.value)} style={{...iSt(),width:'auto',minWidth:130,cursor:'pointer'}}>
+            <option value="All">All Groups</option>
+            {accGroups.map(g=><option key={g} value={g}>{g}</option>)}
+          </select>
+          <input type="file" ref={accImportRef} accept=".csv" onChange={handleAccImport} style={{display:'none'}}/>
+          <Btn variant="secondary" size="sm" onClick={()=>accImportRef.current?.click()}><Icon name="upload" size={14}/> Upload CSV</Btn>
+          <Btn variant="secondary" size="sm" onClick={exportAccCSV}><Icon name="download" size={14}/> Export CSV</Btn>
+        </div>
+        <Card style={{padding:0,overflow:'hidden'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{borderBottom:`1px solid ${COLORS.border}`}}>
+                {['Name','Group','Unit','Price','Good Quality',''].map((h,i)=>(
+                  <th key={i} style={{padding:'10px 14px',textAlign:i>=3?'right':'left',fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAcc.map(a=>(
+                <tr key={a.acc_id} style={{borderBottom:`1px solid ${COLORS.border}`}}>
+                  <td style={{padding:'8px 14px',color:COLORS.text,fontWeight:500}}>{a.name}</td>
+                  <td style={{padding:'8px 14px'}}><span style={{background:COLORS.teal+'18',color:COLORS.teal,padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:600}}>{a.group}</span></td>
+                  <td style={{padding:'8px 14px',color:COLORS.textDim}}>{a.unit}</td>
+                  <td style={{padding:'4px 8px',textAlign:'right'}}>
+                    <input type="number" value={a.price} onChange={e=>updateAccPrice(a.acc_id,'price',e.target.value)} style={{...iSt(),width:90,textAlign:'right',padding:'4px 8px'}} step="0.1"/>
+                  </td>
+                  <td style={{padding:'4px 8px',textAlign:'right'}}>
+                    <input type="number" value={a.price_good||a.price} onChange={e=>updateAccPrice(a.acc_id,'price_good',e.target.value)} style={{...iSt(),width:90,textAlign:'right',padding:'4px 8px'}} step="0.1"/>
+                  </td>
+                  <td style={{padding:'4px 8px'}}>
+                    <button onClick={()=>{setAccessories(p=>p.filter(x=>x.acc_id!==a.acc_id));toast('Removed')}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="trash" size={14}/></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </>}
     </div>
   )
 }

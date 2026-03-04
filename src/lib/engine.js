@@ -1,322 +1,175 @@
 /**
- * Material-Driven Wardrobe & TV Unit Costing Engine v1.0
- *
- * Implements the calculation logic from the spec exactly:
- * - Panel generation with per-panel material assignment
- * - Area grouping by material_id before sheet conversion
- * - Sheet count always rounded UP (CEILING)
- * - Edge banding per exposed front edge
- * - Accessories conditional on door type / sliding / mirror
- * - Commercial engine independent of cost engine
- * - All intermediate values traceable
- *
- * NON-NEGOTIABLE: No hardcoded prices. Everything from config.
+ * Costing Engine v2 — supports full accessory list, overhead, VAT, seller margin
  */
 
-// ─── PANEL GENERATION ────────────────────────────────────────────────────────
-function generatePanels(sku, materialsMap) {
-  const { width_cm, depth_cm, height_cm, doors_count, shelves_count, partitions_count,
-          body_material_id, back_material_id, door_material_id } = sku
-
-  const bodyMat = materialsMap[body_material_id]
-  const backMat = materialsMap[back_material_id]
-  const doorMat = materialsMap[door_material_id]
-
-  // Validate materials
-  if (!bodyMat) return { error: `Body material "${body_material_id}" not found`, panels: [] }
-  if (!backMat) return { error: `Back material "${back_material_id}" not found`, panels: [] }
-  if (doors_count > 0 && !doorMat) return { error: `Door material "${door_material_id}" not found`, panels: [] }
+function generatePanels(sku, matMap) {
+  const { width_cm:w, depth_cm:d, height_cm:h, doors_count:dc, shelves_count:sc,
+          partitions_count:pc, body_material_id:bm, back_material_id:bkm, door_material_id:dm } = sku
+  const bodyMat = matMap[bm], backMat = matMap[bkm], doorMat = matMap[dm]
+  if (!bodyMat) return { error: `Body material "${bm}" not found`, panels: [] }
+  if (!backMat) return { error: `Back material "${bkm}" not found`, panels: [] }
+  if (dc > 0 && !doorMat) return { error: `Door material "${dm}" not found`, panels: [] }
 
   const panels = []
-
-  // Body panels (spec: body_material_id)
-  panels.push({
-    name: 'Side Panels',
-    quantity: 2,
-    unit_area_cm2: height_cm * depth_cm,
-    total_area_cm2: 2 * height_cm * depth_cm,
-    material_id: body_material_id,
-    material: bodyMat,
-    edge_front_cm: 2 * height_cm,    // 2 panels, front edge = height each
-  })
-
-  panels.push({
-    name: 'Top Panel',
-    quantity: 1,
-    unit_area_cm2: width_cm * depth_cm,
-    total_area_cm2: width_cm * depth_cm,
-    material_id: body_material_id,
-    material: bodyMat,
-    edge_front_cm: width_cm,
-  })
-
-  panels.push({
-    name: 'Bottom Panel',
-    quantity: 1,
-    unit_area_cm2: width_cm * depth_cm,
-    total_area_cm2: width_cm * depth_cm,
-    material_id: body_material_id,
-    material: bodyMat,
-    edge_front_cm: width_cm,
-  })
-
-  if (partitions_count > 0) {
-    panels.push({
-      name: 'Internal Partitions',
-      quantity: partitions_count,
-      unit_area_cm2: height_cm * depth_cm,
-      total_area_cm2: partitions_count * height_cm * depth_cm,
-      material_id: body_material_id,
-      material: bodyMat,
-      edge_front_cm: partitions_count * height_cm,
-    })
+  panels.push({ name:'Side Panels', qty:2, unit_area:h*d, total_area:2*h*d, mid:bm, mat:bodyMat, edge_cm:2*h })
+  panels.push({ name:'Top Panel', qty:1, unit_area:w*d, total_area:w*d, mid:bm, mat:bodyMat, edge_cm:w })
+  panels.push({ name:'Bottom Panel', qty:1, unit_area:w*d, total_area:w*d, mid:bm, mat:bodyMat, edge_cm:w })
+  if (pc > 0) panels.push({ name:'Partitions', qty:pc, unit_area:h*d, total_area:pc*h*d, mid:bm, mat:bodyMat, edge_cm:pc*h })
+  if (sc > 0) panels.push({ name:'Shelves', qty:sc, unit_area:w*d, total_area:sc*w*d, mid:bm, mat:bodyMat, edge_cm:sc*w })
+  if (dc > 0) {
+    const dw = w/dc, da = h*dw
+    panels.push({ name:'Doors', qty:dc, unit_area:da, total_area:dc*da, mid:dm, mat:doorMat, edge_cm:dc*2*(h+dw) })
   }
-
-  if (shelves_count > 0) {
-    panels.push({
-      name: 'Shelves',
-      quantity: shelves_count,
-      unit_area_cm2: width_cm * depth_cm,
-      total_area_cm2: shelves_count * width_cm * depth_cm,
-      material_id: body_material_id,
-      material: bodyMat,
-      edge_front_cm: shelves_count * width_cm,
-    })
-  }
-
-  // Doors (spec: door_material_id)
-  if (doors_count > 0) {
-    const doorWidth = width_cm / doors_count
-    const doorArea = height_cm * doorWidth
-    panels.push({
-      name: 'Doors',
-      quantity: doors_count,
-      unit_area_cm2: doorArea,
-      total_area_cm2: doors_count * doorArea,
-      material_id: door_material_id,
-      material: doorMat,
-      edge_front_cm: doors_count * 2 * (height_cm + doorWidth),  // all 4 edges per door
-    })
-  }
-
-  // Back panel (spec: back_material_id)
-  panels.push({
-    name: 'Back Panel',
-    quantity: 1,
-    unit_area_cm2: width_cm * height_cm,
-    total_area_cm2: width_cm * height_cm,
-    material_id: back_material_id,
-    material: backMat,
-    edge_front_cm: 0,  // back panel has no exposed edges
-  })
-
+  panels.push({ name:'Back Panel', qty:1, unit_area:w*h, total_area:w*h, mid:bkm, mat:backMat, edge_cm:0 })
   return { error: null, panels }
 }
 
-// ─── AREA GROUPING & SHEET CONVERSION ────────────────────────────────────────
-function groupByMaterialAndConvert(panels) {
+function groupAndConvert(panels, useGood) {
   const groups = {}
-
   panels.forEach(p => {
-    const mid = p.material_id
-    if (!groups[mid]) {
-      groups[mid] = {
-        material_id: mid,
-        material: p.material,
-        total_area_cm2: 0,
-        panels: [],
-      }
-    }
-    groups[mid].total_area_cm2 += p.total_area_cm2
-    groups[mid].panels.push(p)
+    if (!groups[p.mid]) groups[p.mid] = { mid:p.mid, mat:p.mat, total_area:0, panels:[] }
+    groups[p.mid].total_area += p.total_area
+    groups[p.mid].panels.push(p)
   })
-
-  // Sheet conversion per group
-  const breakdown = Object.values(groups).map(g => {
-    const sheetArea = g.material.sheet_width_cm * g.material.sheet_height_cm
-    const requiredSheets = Math.ceil(g.total_area_cm2 / sheetArea)  // ALWAYS round UP
-    const materialCost = requiredSheets * g.material.price_per_sheet
-    return {
-      ...g,
-      sheet_area_cm2: sheetArea,
-      required_sheets: requiredSheets,
-      material_cost: materialCost,
-    }
+  return Object.values(groups).map(g => {
+    const sa = g.mat.sheet_width_cm * g.mat.sheet_height_cm
+    const sheets = Math.ceil(g.total_area / sa)
+    const price = useGood ? (g.mat.price_good || g.mat.price) : g.mat.price
+    return { ...g, sheet_area:sa, sheets, cost: sheets * price, price_used:price }
   })
-
-  return breakdown
 }
 
-// ─── EDGE BANDING ────────────────────────────────────────────────────────────
-function calculateEdgeBanding(panels, edgePricePerMeter) {
-  const totalEdgeCm = panels.reduce((sum, p) => sum + (p.edge_front_cm || 0), 0)
-  const totalEdgeMeters = totalEdgeCm / 100
-  const edgeCost = totalEdgeMeters * edgePricePerMeter
-  return { total_edge_cm: totalEdgeCm, total_edge_meters: totalEdgeMeters, edge_cost: edgeCost }
+function calcEdge(panels, edgePricePerM) {
+  const cm = panels.reduce((s, p) => s + (p.edge_cm || 0), 0)
+  return { total_cm:cm, total_m: cm/100, cost: (cm/100) * edgePricePerM }
 }
 
-// ─── ACCESSORIES ─────────────────────────────────────────────────────────────
-function calculateAccessories(sku, accPrices) {
-  const { doors_count, drawers_count, shelves_count, has_sliding_system, has_mirror,
-          width_cm, height_cm } = sku
-
+function calcAccessories(sku, accList, useGood) {
+  const { doors_count:dc, drawers_count:dwc, shelves_count:sc, has_sliding_system:sl,
+          has_mirror:mir, width_cm:w, height_cm:h, depth_cm:d,
+          hinge_id, handle_id, drawer_slide_id, edge_banding_id } = sku
+  const byId = {}; accList.forEach(a => { byId[a.acc_id] = a })
   const items = []
+  const gp = (id) => { const a = byId[id]; return a ? (useGood ? (a.price_good||a.price) : a.price) : 0 }
+  const findSlide = () => {
+    // Auto-select drawer slide by depth
+    if (d <= 32) return 'SLIDE_30'; if (d <= 37) return 'SLIDE_35'; if (d <= 42) return 'SLIDE_40'
+    if (d <= 47) return 'SLIDE_45'; if (d <= 52) return 'SLIDE_50'; return 'SLIDE_55'
+  }
 
-  // Hinges: only if doors > 0 AND NOT sliding
-  if (doors_count > 0 && !has_sliding_system) {
-    const qty = doors_count * 3
-    items.push({ name: 'Hinges', quantity: qty, unit_price: accPrices.hinge_price, cost: qty * accPrices.hinge_price })
+  // Hinges (only non-sliding)
+  if (dc > 0 && !sl) {
+    const hid = hinge_id || 'HINGE_FULL'
+    const qty = dc * 3
+    items.push({ name: byId[hid]?.name || 'Hinge', acc_id:hid, qty, unit_price:gp(hid), cost: qty*gp(hid) })
   }
 
   // Drawer slides
-  if (drawers_count > 0) {
-    items.push({ name: 'Drawer Slides', quantity: drawers_count, unit_price: accPrices.drawer_slide_price, cost: drawers_count * accPrices.drawer_slide_price })
+  if (dwc > 0) {
+    const sid = drawer_slide_id || findSlide()
+    items.push({ name: byId[sid]?.name || 'Drawer Slide', acc_id:sid, qty:dwc, unit_price:gp(sid), cost: dwc*gp(sid) })
   }
 
-  // Handles: doors + drawers
-  const handleQty = doors_count + drawers_count
-  if (handleQty > 0) {
-    items.push({ name: 'Handles', quantity: handleQty, unit_price: accPrices.handle_price, cost: handleQty * accPrices.handle_price })
+  // Handles
+  if (dc + dwc > 0) {
+    const hid = handle_id || 'HANDLE_128'
+    const qty = dc + dwc
+    items.push({ name: byId[hid]?.name || 'Handle', acc_id:hid, qty, unit_price:gp(hid), cost: qty*gp(hid) })
   }
 
-  // Shelf supports: shelves * 4
-  if (shelves_count > 0) {
-    const qty = shelves_count * 4
-    items.push({ name: 'Shelf Supports', quantity: qty, unit_price: accPrices.shelf_support_price, cost: qty * accPrices.shelf_support_price })
+  // Shelf supports
+  if (sc > 0) {
+    const qty = sc * 4
+    items.push({ name:'Shelf Supports', acc_id:'SHELF_SUPPORT', qty, unit_price:gp('SHELF_SUPPORT'), cost: qty*gp('SHELF_SUPPORT') })
   }
 
   // Sliding mechanism
-  if (has_sliding_system) {
-    items.push({ name: 'Sliding Mechanism', quantity: 1, unit_price: accPrices.sliding_mechanism_price, cost: accPrices.sliding_mechanism_price })
+  if (sl) {
+    items.push({ name: byId['GLASS_SLIDE']?.name || 'Sliding Door', acc_id:'GLASS_SLIDE', qty:1, unit_price:gp('GLASS_SLIDE'), cost: gp('GLASS_SLIDE') })
+    items.push({ name: byId['LATCH_SLIDE']?.name || 'Slide Latch', acc_id:'LATCH_SLIDE', qty:1, unit_price:gp('LATCH_SLIDE'), cost: gp('LATCH_SLIDE') })
   }
 
-  // Mirror: spec formula = (height_cm * (width_cm / doors_count) * doors_count) / 10000
-  //         simplifies to  (height_cm * width_cm) / 10000
-  if (has_mirror && doors_count > 0) {
-    const mirrorAreaM2 = (height_cm * (width_cm / doors_count) * doors_count) / 10000
-    items.push({ name: 'Mirror', quantity: 1, area_m2: mirrorAreaM2, unit_price: accPrices.mirror_price_per_m2, cost: mirrorAreaM2 * accPrices.mirror_price_per_m2 })
+  // Mirror
+  if (mir && dc > 0) {
+    const area = (h * w) / 10000
+    items.push({ name:'Mirror', acc_id:'MIRROR_M2', qty:1, area_m2:area, unit_price:gp('MIRROR_M2'), cost: area*gp('MIRROR_M2') })
   }
 
-  const totalAccessoriesCost = items.reduce((s, i) => s + i.cost, 0)
-  return { items, total: totalAccessoriesCost }
+  return { items, total: items.reduce((s, i) => s + i.cost, 0) }
 }
 
-// ─── COMMERCIAL ENGINE (independent from cost engine) ────────────────────────
-function calculateCommercial(sellingPrice, productionCost, commercialConfig) {
-  if (!sellingPrice || sellingPrice <= 0) return null
+export function calculateSKUCost(sku, materials, accList, commercial, useGoodQuality = false) {
+  const matMap = {}; materials.forEach(m => { matMap[m.material_id] = m })
 
-  const commission = sellingPrice * commercialConfig.commission_percent
-  const vat = sellingPrice * commercialConfig.vat_percent
-  const netProfit = sellingPrice - commission - vat - productionCost
-  const netMarginPercent = (netProfit / sellingPrice) * 100
-
-  return {
-    selling_price: sellingPrice,
-    commission,
-    vat,
-    net_profit: netProfit,
-    net_margin_percent: netMarginPercent,
-  }
-}
-
-// ─── MAIN CALCULATION FUNCTION ───────────────────────────────────────────────
-/**
- * @param {Object} sku - SKU with all input fields per input_schema
- * @param {Array}  materials - Array of material objects from pricing_configuration
- * @param {Object} accessoriesPrices - Accessories prices object
- * @param {Object} commercialConfig - { vat_percent, commission_percent }
- * @returns {Object} Full cost breakdown with all intermediate values
- */
-export function calculateSKUCost(sku, materials, accessoriesPrices, commercialConfig) {
-  // Build materials lookup map
-  const materialsMap = {}
-  materials.forEach(m => { materialsMap[m.material_id] = m })
-
-  // Normalize SKU inputs
-  const normalized = {
-    width_cm:          Number(sku.width_cm) || 0,
-    height_cm:         Number(sku.height_cm) || 0,
-    depth_cm:          Number(sku.depth_cm) || 0,
-    doors_count:       Number(sku.doors_count) || 0,
-    drawers_count:     Number(sku.drawers_count) || 0,
-    shelves_count:     Number(sku.shelves_count) || 0,
-    partitions_count:  Number(sku.partitions_count) || 0,
-    has_sliding_system: Boolean(sku.has_sliding_system),
-    has_mirror:        Boolean(sku.has_mirror),
-    body_material_id:  sku.body_material_id || 'MDF_17',
-    back_material_id:  sku.back_material_id || 'MDF_4',
-    door_material_id:  sku.door_material_id || 'MDF_17',
-    selling_price:     Number(sku.selling_price) || 0,
+  const norm = {
+    width_cm: Number(sku.width_cm)||0, height_cm: Number(sku.height_cm)||0, depth_cm: Number(sku.depth_cm)||0,
+    doors_count: Number(sku.doors_count)||0, drawers_count: Number(sku.drawers_count)||0,
+    shelves_count: Number(sku.shelves_count)||0, partitions_count: Number(sku.partitions_count)||0,
+    has_sliding_system: Boolean(sku.has_sliding_system), has_mirror: Boolean(sku.has_mirror),
+    body_material_id: sku.body_material_id||'MDF_17_F2', back_material_id: sku.back_material_id||'MDF_3.2_F1',
+    door_material_id: sku.door_material_id||'MDF_17_F2', selling_price: Number(sku.selling_price)||0,
+    hinge_id: sku.hinge_id, handle_id: sku.handle_id, drawer_slide_id: sku.drawer_slide_id,
+    edge_banding_id: sku.edge_banding_id,
   }
 
-  // 1. Generate panels
-  const { error, panels } = generatePanels(normalized, materialsMap)
-  if (error) return { error, production_cost: 0 }
+  const { error, panels } = generatePanels(norm, matMap)
+  if (error) return { error, production_cost:0 }
 
-  // 2. Group by material and convert to sheets
-  const materialsBreakdown = groupByMaterialAndConvert(panels)
-  const totalMaterialCost = materialsBreakdown.reduce((s, g) => s + g.material_cost, 0)
+  const matBreakdown = groupAndConvert(panels, useGoodQuality)
+  const totalMatCost = matBreakdown.reduce((s, g) => s + g.cost, 0)
 
-  // 3. Edge banding
-  const edge = calculateEdgeBanding(panels, Number(accessoriesPrices.edge_banding_price_per_meter) || 0)
+  // Edge banding
+  const ebId = norm.edge_banding_id || 'EDGE_STD'
+  const ebAcc = accList.find(a => a.acc_id === ebId)
+  const ebPrice = ebAcc ? (useGoodQuality ? (ebAcc.price_good||ebAcc.price) : ebAcc.price) : 4
+  const edge = calcEdge(panels, ebPrice)
 
-  // 4. Accessories
-  const acc = calculateAccessories(normalized, accessoriesPrices)
+  const acc = calcAccessories(norm, accList, useGoodQuality)
 
-  // 5. Production cost = materials + edge + accessories
-  const productionCost = totalMaterialCost + edge.edge_cost + acc.total
+  const rawCost = totalMatCost + edge.cost + acc.total
+  const overhead = rawCost * (commercial.overhead_percent || 0)
+  const productionCost = rawCost + overhead
 
-  // 6. Commercial (independent)
-  const commercial = calculateCommercial(normalized.selling_price, productionCost, commercialConfig)
+  // Commercial
+  let commercialResult = null
+  if (norm.selling_price > 0) {
+    const sp = norm.selling_price
+    const commission = sp * (commercial.commission_percent || 0)
+    const vat = sp * (commercial.vat_percent || 0)
+    const sellerMargin = sp * (commercial.seller_margin_percent || 0)
+    const netProfit = sp - commission - vat - sellerMargin - productionCost
+    commercialResult = { selling_price:sp, commission, vat, seller_margin:sellerMargin, net_profit:netProfit, net_margin_percent: (netProfit/sp)*100 }
+  }
 
   return {
-    error: null,
-    // Full traceable breakdown
-    panels,
-    materials_breakdown: materialsBreakdown.map(g => ({
-      material_id: g.material_id,
-      material_name: g.material.name,
-      total_area_cm2: g.total_area_cm2,
-      sheet_area_cm2: g.sheet_area_cm2,
-      required_sheets: g.required_sheets,
-      material_cost: g.material_cost,
-      price_per_sheet: g.material.price_per_sheet,
-      panels: g.panels.map(p => ({ name: p.name, quantity: p.quantity, unit_area_cm2: p.unit_area_cm2, total_area_cm2: p.total_area_cm2 })),
+    error: null, panels,
+    materials_breakdown: matBreakdown.map(g => ({
+      material_id:g.mid, material_name:g.mat.name, total_area_cm2:g.total_area,
+      sheet_area_cm2:g.sheet_area, required_sheets:g.sheets, material_cost:g.cost,
+      price_per_sheet:g.price_used,
+      panels: g.panels.map(p => ({ name:p.name, quantity:p.qty, unit_area_cm2:p.unit_area, total_area_cm2:p.total_area })),
     })),
-    total_material_cost: totalMaterialCost,
-
-    edge_banding: edge,
-
+    total_material_cost: totalMatCost,
+    edge_banding: { ...edge, acc_id:ebId, price_per_m:ebPrice },
     accessories: acc,
-
+    overhead_amount: overhead,
+    overhead_percent: commercial.overhead_percent || 0,
     production_cost: productionCost,
-
-    commercial,
+    commercial: commercialResult,
   }
 }
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
 export const fmt = (n) => n != null ? Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—'
 export const fmtP = (n) => n != null ? Number(n).toFixed(1) + '%' : '—'
-export const fmtD = (n) => n != null ? Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'
 
-/**
- * Convert a flat SKU row (from catalog table) to the input shape the engine expects.
- */
 export function skuToEngineInput(row) {
   return {
-    width_cm: row.width_cm,
-    height_cm: row.height_cm,
-    depth_cm: row.depth_cm,
-    doors_count: row.doors_count,
-    drawers_count: row.drawers_count,
-    shelves_count: row.shelves_count,
-    partitions_count: row.partitions_count,
-    has_sliding_system: row.has_sliding_system || (row.door_type === 'Sliding'),
-    has_mirror: row.has_mirror,
-    body_material_id: row.body_material_id || 'MDF_17',
-    back_material_id: row.back_material_id || 'MDF_4',
-    door_material_id: row.door_material_id || 'MDF_17',
-    selling_price: row.selling_price,
+    width_cm:row.width_cm, height_cm:row.height_cm, depth_cm:row.depth_cm,
+    doors_count:row.doors_count, drawers_count:row.drawers_count, shelves_count:row.shelves_count,
+    partitions_count:row.partitions_count, has_sliding_system: row.has_sliding_system || row.door_type==='Sliding',
+    has_mirror:row.has_mirror, body_material_id:row.body_material_id||'MDF_17_F2',
+    back_material_id:row.back_material_id||'MDF_3.2_F1', door_material_id:row.door_material_id||'MDF_17_F2',
+    selling_price:row.selling_price, hinge_id:row.hinge_id, handle_id:row.handle_id,
+    drawer_slide_id:row.drawer_slide_id, edge_banding_id:row.edge_banding_id,
   }
 }
