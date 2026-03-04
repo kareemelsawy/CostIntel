@@ -125,15 +125,23 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
           {cost.commercial && <>
             <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
-              <span style={{color:COLORS.textDim}}>+ Seller Margin ({((commercial.seller_margin_percent||0)*100).toFixed(0)}%)</span>
+              <span style={{color:COLORS.textDim}}>+ Seller Margin ({((commercial.seller_margin_percent||0)*100).toFixed(0)}% of Prod. Cost)</span>
               <span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.seller_margin)} EGP</span>
             </div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
-              <span style={{color:COLORS.textDim}}>+ Homzmart Margin ({((commercial.homzmart_margin_percent||commercial.commission_percent||0)*100).toFixed(0)}%)</span>
-              <span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.homzmart_margin)} EGP</span>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12,paddingLeft:12}}>
+              <span style={{color:COLORS.textMuted,fontStyle:'italic'}}>Subtotal</span>
+              <span style={{color:COLORS.textMuted,fontWeight:600}}>{fmt(cost.commercial.subtotal_after_seller)} EGP</span>
             </div>
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
-              <span style={{color:COLORS.textDim}}>+ VAT ({((commercial.vat_percent||0)*100).toFixed(0)}%)</span>
+              <span style={{color:COLORS.textDim}}>+ Homzmart Margin ({((commercial.homzmart_margin_percent||commercial.commission_percent||0)*100).toFixed(0)}% of above)</span>
+              <span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.homzmart_margin)} EGP</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12,paddingLeft:12}}>
+              <span style={{color:COLORS.textMuted,fontStyle:'italic'}}>Subtotal</span>
+              <span style={{color:COLORS.textMuted,fontWeight:600}}>{fmt(cost.commercial.subtotal_after_homzmart)} EGP</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+              <span style={{color:COLORS.textDim}}>+ VAT ({((commercial.vat_percent||0)*100).toFixed(0)}% of above)</span>
               <span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.vat)} EGP</span>
             </div>
             <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>

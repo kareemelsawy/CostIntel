@@ -136,19 +136,33 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
   const homzmartMarginPct = commercial.homzmart_margin_percent || commercial.commission_percent || 0
   const vatPct = commercial.vat_percent || 0
 
-  // Recommended selling price: productionCost / (1 - seller% - homzmart% - vat%)
-  const denominator = 1 - sellerMarginPct - homzmartMarginPct - vatPct
-  const recommendedSP = denominator > 0 ? productionCost / denominator : 0
+  // Recommended selling price (break-even): margins cascade on previous subtotal
+  // Production Cost → +Seller Margin(% of Prod) → +Homzmart Margin(% of Prod+Seller) → +VAT(% of subtotal)
+  const recSellerMargin = productionCost * sellerMarginPct
+  const recSubtotal1 = productionCost + recSellerMargin
+  const recHomzmartMargin = recSubtotal1 * homzmartMarginPct
+  const recSubtotal2 = recSubtotal1 + recHomzmartMargin
+  const recVat = recSubtotal2 * vatPct
+  const recommendedSP = recSubtotal2 + recVat
 
   if (sp > 0) {
-    const sellerMargin = sp * sellerMarginPct
-    const homzmartMargin = sp * homzmartMarginPct
-    const vat = sp * vatPct
-    const netProfit = sp - productionCost - sellerMargin - homzmartMargin - vat
+    // Actual waterfall at given selling price — work backwards to find net profit
+    // Seller Margin = % of Production Cost
+    const sellerMargin = productionCost * sellerMarginPct
+    // Homzmart Margin = % of (Production Cost + Seller Margin)
+    const subtotal1 = productionCost + sellerMargin
+    const homzmartMargin = subtotal1 * homzmartMarginPct
+    // VAT = % of (subtotal1 + Homzmart Margin)
+    const subtotal2 = subtotal1 + homzmartMargin
+    const vat = subtotal2 * vatPct
+    // Net profit = Selling Price - all costs
+    const totalCosts = productionCost + sellerMargin + homzmartMargin + vat
+    const netProfit = sp - totalCosts
     commercialResult = {
       selling_price: sp, seller_margin: sellerMargin, homzmart_margin: homzmartMargin,
       vat, net_profit: netProfit, net_margin_percent: (netProfit / sp) * 100,
       recommended_selling_price: recommendedSP,
+      subtotal_after_seller: subtotal1, subtotal_after_homzmart: subtotal2,
     }
   }
 
