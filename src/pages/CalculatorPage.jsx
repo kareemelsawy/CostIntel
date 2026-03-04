@@ -15,7 +15,7 @@ export default function CalculatorPage({ materials, accessories, commercial, set
     name:'New Estimate',seller:'',sub_category:'Wardrobes',
     width_cm:120,depth_cm:60,height_cm:210,door_type:'Hinged',
     doors_count:2,drawers_count:0,shelves_count:4,spaces_count:2,hangers_count:1,
-    handle_type:'Normal',internal_division:'NO',has_mirror:false,mirror_count:0,
+    handle_type:'Normal',has_mirror:false,mirror_count:0,
     body_material_id:def.body,back_material_id:def.back,door_material_id:def.door,
     selling_price:0,
   })
@@ -41,15 +41,12 @@ export default function CalculatorPage({ materials, accessories, commercial, set
     return <div><label style={lSt()}>{label}</label><input type="number" value={form[k]||0} onChange={e=>set(k,Number(e.target.value))} min={min} style={iSt()}/></div>
   }
 
-  const matOpts=materials.map(m=>({value:m.material_id,label:`${m.name} (${fmt(useGood?(m.price_good||m.price):m.price)} EGP)`}))
-  const edgeOpts=accessories.filter(a=>a.group==='edge_banding').map(a=>({value:a.acc_id,label:`${a.name} (${useGood?(a.price_good||a.price):a.price}/m)`}))
-
   return (
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div>
           <h2 style={{fontSize:20,fontWeight:800,color:COLORS.text,letterSpacing:'-0.02em',marginBottom:4}}>Quick Calculator</h2>
-          <p style={{fontSize:13,color:COLORS.textMuted}}>Live cost estimation — updates as you type</p>
+          <p style={{fontSize:13,color:COLORS.textMuted}}>Live cost estimation</p>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <span style={{fontSize:12,color:COLORS.textMuted}}>Good Quality</span>
@@ -68,14 +65,7 @@ export default function CalculatorPage({ materials, accessories, commercial, set
             <Field label="No. of Drawers" k="drawers_count"/><Field label="No. of Shelves" k="shelves_count"/>
             <Field label="No. of Spaces" k="spaces_count"/><Field label="No. of Hangers" k="hangers_count"/>
             <Field label="Handle Type" k="handle_type" options={HANDLE_TYPES}/>
-            <Field label="Internal Division" k="internal_division" options={['NO','YES']}/>
-            <div style={{gridColumn:'1/-1',borderTop:`1px solid ${COLORS.border}`,paddingTop:12}}>
-              <div style={{fontSize:12,fontWeight:700,color:COLORS.textDim,marginBottom:10}}>Material Assignment</div>
-            </div>
-            <Field label="Body Material" k="body_material_id" options={matOpts}/>
-            <Field label="Door Material" k="door_material_id" options={matOpts}/>
-            <Field label="Back Material" k="back_material_id" options={matOpts}/>
-            <Field label="Edge Banding" k="edge_banding_id" options={edgeOpts}/>
+            <div/>
             <div style={{gridColumn:'1/-1'}}><Field label="Has Mirror" k="has_mirror" type="toggle"/></div>
             {form.has_mirror&&<Field label="Mirror Count" k="mirror_count"/>}
             <div style={{gridColumn:'1/-1',borderTop:`1px solid ${COLORS.border}`,paddingTop:12}}>
@@ -96,15 +86,20 @@ export default function CalculatorPage({ materials, accessories, commercial, set
               </div>
               {cost.derived_partitions>0&&<div style={{fontSize:12,color:COLORS.teal,marginBottom:8,padding:'4px 8px',background:COLORS.teal+'12',borderRadius:6}}>Derived {cost.derived_partitions} partition{cost.derived_partitions>1?'s':''} from {form.spaces_count} spaces</div>}
               {[
-                {l:'Material Cost (EGP)',v:cost.total_material_cost},
+                {l:'Materials (EGP)',v:cost.total_material_cost},
                 {l:`Edge Banding ${cost.edge_banding.total_m.toFixed(1)} m (EGP)`,v:cost.edge_banding.cost},
                 {l:'Accessories (EGP)',v:cost.accessories.total},
-                {l:`Overhead ${(cost.overhead_percent*100).toFixed(0)}% (EGP)`,v:cost.overhead_amount},
               ].map(r=>(
                 <div key={r.l} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}>
                   <span style={{color:COLORS.textDim}}>{r.l}</span><span style={{fontWeight:600,color:COLORS.text}}>{fmt(r.v)}</span>
                 </div>
               ))}
+              <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontWeight:700,fontSize:14,borderBottom:`1px solid ${COLORS.border}`}}>
+                <span style={{color:COLORS.text}}>COGS</span><span style={{color:COLORS.text}}>{fmt(cost.cogs)} EGP</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}>
+                <span style={{color:COLORS.textDim}}>Overhead ({(cost.overhead_percent*100).toFixed(0)}%)</span><span style={{fontWeight:600,color:COLORS.text}}>{fmt(cost.overhead_amount)}</span>
+              </div>
               <div style={{display:'flex',justifyContent:'space-between',padding:'12px 0',fontWeight:800,fontSize:17}}>
                 <span style={{color:COLORS.text}}>Production Cost</span><span style={{color:COLORS.accent}}>{fmt(cost.production_cost)} EGP</span>
               </div>
@@ -115,11 +110,12 @@ export default function CalculatorPage({ materials, accessories, commercial, set
                 <div style={{fontSize:40,fontWeight:900,color:mc,letterSpacing:'-0.03em'}}>{fmtP(m)}</div>
                 <div style={{fontSize:12,color:COLORS.textMuted,marginTop:4}}>Net Margin</div>
               </div>
-              <div style={{height:8,borderRadius:4,background:COLORS.border,overflow:'hidden',marginBottom:12}}>
-                <div style={{height:'100%',width:`${Math.max(0,Math.min(100,m+50))}%`,background:mc,borderRadius:4,transition:'width 0.4s'}}/>
-              </div>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginTop:8}}>
                 <span style={{color:COLORS.textDim}}>Net Profit</span><span style={{fontWeight:700,color:mc}}>{fmt(cost.commercial.net_profit)} EGP</span>
+              </div>
+              <div style={{marginTop:12,padding:'10px 12px',background:COLORS.accent+'12',borderRadius:8,border:`1px solid ${COLORS.accent}30`}}>
+                <div style={{fontSize:11,fontWeight:700,color:COLORS.accent,textTransform:'uppercase',marginBottom:2}}>Recommended Selling Price</div>
+                <div style={{fontSize:20,fontWeight:900,color:COLORS.accent}}>{fmt(cost.recommended_selling_price)} EGP</div>
               </div>
             </Card>}
             <Card>

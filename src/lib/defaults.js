@@ -60,7 +60,7 @@ export const DEFAULT_ACCESSORIES = [
 ]
 
 export const DEFAULT_COMMERCIAL = {
-  vat_percent:0.14, commission_percent:0.40, overhead_percent:0.10, seller_margin_percent:0.15,
+  vat_percent:0.14, homzmart_margin_percent:0.40, overhead_percent:0.10, seller_margin_percent:0.15,
 }
 
 export const CATEGORY_MATERIAL_DEFAULTS = {

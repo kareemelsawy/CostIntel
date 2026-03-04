@@ -98,7 +98,7 @@ export default function App() {
               </div>
               <div>
                 <div style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:15, letterSpacing:'-0.02em', color:COLORS.accent }}>SKU Intel</div>
-                <div style={{ fontSize:10, color:COLORS.textMuted }}>Cost Engine v3.0</div>
+                <div style={{ fontSize:10, color:COLORS.textMuted }}>Cost Engine v4.0</div>
               </div>
             </div>
           </div>

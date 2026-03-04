@@ -28,18 +28,16 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   const SH=({col,children})=><div onClick={()=>toggleSort(col)} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:4,userSelect:'none'}}>{children}{sortBy===col&&<Icon name={sortDir==='asc'?'arrowUp':'arrowDown'} size={12} color={COLORS.accent}/>}</div>
 
   function exportCSV() {
-    const rows = filtered.map(s => skuToCsvRow(s, skuCosts[s.sku_code]))
+    const rows = filtered.map(s => skuToCsvRow(s))
     const blob = new Blob([CSV_COLUMNS.join(',')+'\n'+rows.join('\n')],{type:'text/csv'})
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_catalog_export.csv';a.click()
-    toast('CSV exported — use this file as upload template')
+    toast('CSV exported')
   }
-
   function downloadTemplate() {
     const blob = new Blob([CSV_COLUMNS.join(',')+'\n'],{type:'text/csv'})
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_upload_template.csv';a.click()
-    toast('Empty template downloaded')
+    toast('Template downloaded')
   }
-
   function handleImport(e) {
     const file=e.target.files?.[0]; if(!file) return
     const reader=new FileReader()
@@ -82,7 +80,6 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
           }}><Icon name="plus" size={14}/> Add SKU</Btn>
         </div>
       </div>
-
       <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
         <div style={{position:'relative',flex:1,minWidth:200}}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search SKU, name, seller..." style={{...iSt(),paddingLeft:34}}/>
@@ -93,12 +90,11 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
           {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
       </div>
-
       <Card style={{padding:0,overflow:'hidden'}}>
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead><tr style={{borderBottom:`1px solid ${COLORS.border}`}}>
-              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'_dims',l:'W×D×H (cm)'},{c:'cost',l:'Cost (EGP)'},{c:'_sp',l:'Sell (EGP)'},{c:'margin',l:'Margin %'},{c:'_act',l:''}].map(h=>(
+              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'_dims',l:'W×D×H (cm)'},{c:'cost',l:'COGS (EGP)'},{c:'_sp',l:'Sell (EGP)'},{c:'margin',l:'Margin %'},{c:'_act',l:''}].map(h=>(
                 <th key={h.c} style={{padding:'10px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>
                   {!h.c.startsWith('_')?<SH col={h.c}>{h.l}</SH>:h.l}
                 </th>
@@ -111,13 +107,13 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                 <tr key={s.sku_code} onClick={()=>setSelectedSku(s)} style={{borderBottom:`1px solid ${COLORS.border}`,cursor:'pointer',transition:'background 0.1s'}}
                   onMouseEnter={e=>e.currentTarget.style.background=COLORS.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background=''}>
                   <td style={{padding:'6px 12px',width:44}}>
-                    {s.image_link ? <img src={s.image_link} alt="" style={{width:36,height:36,objectFit:'cover',borderRadius:6,background:COLORS.bg}} onError={e=>{e.target.style.display='none'}}/> : <div style={{width:36,height:36,borderRadius:6,background:COLORS.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="box" size={14} color={COLORS.textMuted}/></div>}
+                    {s.image_link?<img src={s.image_link} alt="" style={{width:36,height:36,objectFit:'cover',borderRadius:6,background:COLORS.bg}} onError={e=>{e.target.style.display='none'}}/>:<div style={{width:36,height:36,borderRadius:6,background:COLORS.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="box" size={14} color={COLORS.textMuted}/></div>}
                   </td>
                   <td style={{padding:'8px 12px',fontWeight:600,color:COLORS.accent,fontSize:11,fontFamily:'monospace'}}>{s.sku_code}</td>
                   <td style={{padding:'8px 12px',color:COLORS.text,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.name}</td>
                   <td style={{padding:'8px 12px'}}><span style={{background:COLORS.purple+'18',color:COLORS.purple,padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:600}}>{s.sub_category}</span></td>
                   <td style={{padding:'8px 12px',color:COLORS.textDim,fontSize:12,fontFamily:'monospace'}}>{s.width_cm}×{s.depth_cm}×{s.height_cm}</td>
-                  <td style={{padding:'8px 12px',fontWeight:700,color:COLORS.text}}>{c?fmt(c.production_cost):'—'}</td>
+                  <td style={{padding:'8px 12px',fontWeight:700,color:COLORS.text}}>{c?fmt(c.cogs):'—'}</td>
                   <td style={{padding:'8px 12px',color:COLORS.textDim}}>{s.selling_price?fmt(s.selling_price):'—'}</td>
                   <td style={{padding:'8px 12px'}}><span style={{color:mc,fontWeight:700}}>{c?.commercial?fmtP(m):'—'}</span></td>
                   <td style={{padding:'8px 12px'}}>

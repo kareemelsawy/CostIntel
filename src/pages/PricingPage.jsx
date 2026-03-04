@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react'
 import { COLORS } from '../lib/constants'
-import { fmt } from '../lib/engine'
 import { Icon, Btn, Card } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
@@ -16,22 +15,8 @@ export default function PricingPage({ materials, setMaterials, accessories, setA
   const updateMat=(mid,field,val)=>setMaterials(p=>p.map(m=>m.material_id===mid?{...m,[field]:Number(val)}:m))
   const updateAcc=(aid,field,val)=>setAccessories(p=>p.map(a=>a.acc_id===aid?{...a,[field]:Number(val)}:a))
 
-  function handleMatImport(e){
-    const file=e.target.files?.[0];if(!file)return
-    const reader=new FileReader();reader.onload=ev=>{
-      try{const lines=ev.target.result.split('\n').filter(l=>l.trim());const hdrs=lines[0].split(',').map(h=>h.trim());let u=0
-      for(let i=1;i<lines.length;i++){const vals=lines[i].split(',');const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.trim()});const mid=row.material_id||row.ID;if(!mid)continue
-      setMaterials(p=>p.map(m=>{if(m.material_id===mid){u++;return{...m,price:row.price?Number(row.price):m.price,price_good:row.price_good?Number(row.price_good):m.price_good,name:row.name||m.name}};return m}))}
-      toast(`Updated ${u} material prices`)}catch(err){toast('Error: '+err.message,'error')}};reader.readAsText(file);e.target.value=''}
-
-  function handleAccImport(e){
-    const file=e.target.files?.[0];if(!file)return
-    const reader=new FileReader();reader.onload=ev=>{
-      try{const lines=ev.target.result.split('\n').filter(l=>l.trim());const hdrs=lines[0].split(',').map(h=>h.trim());let u=0
-      for(let i=1;i<lines.length;i++){const vals=lines[i].split(',');const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.trim()});const aid=row.acc_id||row.ID;if(!aid)continue
-      setAccessories(p=>p.map(a=>{if(a.acc_id===aid){u++;return{...a,price:row.price?Number(row.price):a.price,price_good:row.price_good?Number(row.price_good):a.price_good}};return a}))}
-      toast(`Updated ${u} accessory prices`)}catch(err){toast('Error: '+err.message,'error')}};reader.readAsText(file);e.target.value=''}
-
+  function handleMatImport(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const lines=ev.target.result.split('\n').filter(l=>l.trim());const hdrs=lines[0].split(',').map(h=>h.trim());let u=0;for(let i=1;i<lines.length;i++){const vals=lines[i].split(',');const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.trim()});const mid=row.material_id||row.ID;if(!mid)continue;setMaterials(p=>p.map(m=>{if(m.material_id===mid){u++;return{...m,price:row.price?Number(row.price):m.price,price_good:row.price_good?Number(row.price_good):m.price_good}};return m}))}toast(`Updated ${u} prices`)}catch(err){toast('Error','error')}};reader.readAsText(file);e.target.value=''}
+  function handleAccImport(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const lines=ev.target.result.split('\n').filter(l=>l.trim());const hdrs=lines[0].split(',').map(h=>h.trim());let u=0;for(let i=1;i<lines.length;i++){const vals=lines[i].split(',');const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.trim()});const aid=row.acc_id||row.ID;if(!aid)continue;setAccessories(p=>p.map(a=>{if(a.acc_id===aid){u++;return{...a,price:row.price?Number(row.price):a.price,price_good:row.price_good?Number(row.price_good):a.price_good}};return a}))}toast(`Updated ${u} prices`)}catch(err){toast('Error','error')}};reader.readAsText(file);e.target.value=''}
   function exportMatCSV(){const h='material_id,name,thickness_mm,price,price_good';const rows=materials.map(m=>`${m.material_id},"${m.name}",${m.thickness_mm},${m.price},${m.price_good||m.price}`);const blob=new Blob([[h,...rows].join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='materials_prices.csv';a.click();toast('Exported')}
   function exportAccCSV(){const h='acc_id,name,unit,group,price,price_good';const rows=accessories.map(a=>`${a.acc_id},"${a.name}",${a.unit},${a.group},${a.price},${a.price_good||a.price}`);const blob=new Blob([[h,...rows].join('\n')],{type:'text/csv'});const a2=document.createElement('a');a2.href=URL.createObjectURL(blob);a2.download='accessories_prices.csv';a2.click();toast('Exported')}
 
@@ -44,27 +29,21 @@ export default function PricingPage({ materials, setMaterials, accessories, setA
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
       <h2 style={{fontSize:20,fontWeight:800,color:COLORS.text,letterSpacing:'-0.02em',marginBottom:4}}>Price Configuration</h2>
       <p style={{fontSize:13,color:COLORS.textMuted,marginBottom:20}}>Edit inline or mass upload via CSV</p>
-
       <Card style={{marginBottom:20}}>
         <div style={{fontSize:14,fontWeight:700,color:COLORS.text,marginBottom:16}}>Commercial & Overhead Settings</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:12}}>
-          {[{l:'VAT %',k:'vat_percent'},{l:'Commission %',k:'commission_percent'},{l:'Overhead %',k:'overhead_percent'},{l:'Seller Margin %',k:'seller_margin_percent'}].map(f=>(
-            <div key={f.k}><label style={lSt()}>{f.l}</label><input type="number" value={((commercial[f.k]||0)*100).toFixed(0)} onChange={e=>setCommercial(p=>({...p,[f.k]:Number(e.target.value)/100}))} style={iSt()} min={0} max={100}/></div>
+          {[{l:'Overhead %',k:'overhead_percent'},{l:'Seller Margin %',k:'seller_margin_percent'},{l:'Homzmart Margin %',k:'homzmart_margin_percent'},{l:'VAT %',k:'vat_percent'}].map(f=>(
+            <div key={f.k}><label style={lSt()}>{f.l}</label><input type="number" value={((commercial[f.k]||commercial.commission_percent||0)*100).toFixed(0)} onChange={e=>setCommercial(p=>({...p,[f.k]:Number(e.target.value)/100}))} style={iSt()} min={0} max={100}/></div>
           ))}
         </div>
       </Card>
-
       <div style={{display:'flex',gap:0,borderBottom:`1px solid ${COLORS.border}`,marginBottom:16}}>
         <button onClick={()=>setTab('materials')} style={tabSt('materials')}>Sheet Materials ({materials.length})</button>
         <button onClick={()=>setTab('accessories')} style={tabSt('accessories')}>Accessories ({accessories.length})</button>
       </div>
-
       {tab==='materials'&&<>
         <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-          <div style={{position:'relative',flex:1,minWidth:200}}>
-            <input value={matSearch} onChange={e=>setMatSearch(e.target.value)} placeholder="Search materials..." style={{...iSt(),paddingLeft:34}}/>
-            <div style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}><Icon name="search" size={14} color={COLORS.textMuted}/></div>
-          </div>
+          <div style={{position:'relative',flex:1,minWidth:200}}><input value={matSearch} onChange={e=>setMatSearch(e.target.value)} placeholder="Search..." style={{...iSt(),paddingLeft:34}}/><div style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}><Icon name="search" size={14} color={COLORS.textMuted}/></div></div>
           <input type="file" ref={matRef} accept=".csv" onChange={handleMatImport} style={{display:'none'}}/>
           <Btn variant="secondary" size="sm" onClick={()=>matRef.current?.click()}><Icon name="upload" size={14}/> Upload CSV</Btn>
           <Btn variant="secondary" size="sm" onClick={exportMatCSV}><Icon name="download" size={14}/> Export</Btn>
@@ -91,17 +70,10 @@ export default function PricingPage({ materials, setMaterials, accessories, setA
           </table>
         </Card>
       </>}
-
       {tab==='accessories'&&<>
         <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-          <div style={{position:'relative',flex:1,minWidth:200}}>
-            <input value={accSearch} onChange={e=>setAccSearch(e.target.value)} placeholder="Search accessories..." style={{...iSt(),paddingLeft:34}}/>
-            <div style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}><Icon name="search" size={14} color={COLORS.textMuted}/></div>
-          </div>
-          <select value={accGroup} onChange={e=>setAccGroup(e.target.value)} style={{...iSt(),width:'auto',minWidth:130,cursor:'pointer'}}>
-            <option value="All">All Groups</option>
-            {accGroups.map(g=><option key={g} value={g}>{g}</option>)}
-          </select>
+          <div style={{position:'relative',flex:1,minWidth:200}}><input value={accSearch} onChange={e=>setAccSearch(e.target.value)} placeholder="Search..." style={{...iSt(),paddingLeft:34}}/><div style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}><Icon name="search" size={14} color={COLORS.textMuted}/></div></div>
+          <select value={accGroup} onChange={e=>setAccGroup(e.target.value)} style={{...iSt(),width:'auto',minWidth:130,cursor:'pointer'}}><option value="All">All Groups</option>{accGroups.map(g=><option key={g} value={g}>{g}</option>)}</select>
           <input type="file" ref={accRef} accept=".csv" onChange={handleAccImport} style={{display:'none'}}/>
           <Btn variant="secondary" size="sm" onClick={()=>accRef.current?.click()}><Icon name="upload" size={14}/> Upload CSV</Btn>
           <Btn variant="secondary" size="sm" onClick={exportAccCSV}><Icon name="download" size={14}/> Export</Btn>

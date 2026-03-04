@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { COLORS, CATEGORIES, DOOR_TYPES, HANDLE_TYPES, UNIT_TYPES } from '../lib/constants'
+import { COLORS, CATEGORIES, DOOR_TYPES, HANDLE_TYPES } from '../lib/constants'
 import { calculateSKUCost, skuToEngineInput, fmt, fmtA, fmtP } from '../lib/engine'
 import { Icon, Btn, Modal, StatCard, Toggle } from '../components/UI'
 
@@ -14,6 +14,16 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
   const m = cost.commercial?.net_margin_percent||0
   const mc = m>20?COLORS.green:m>0?COLORS.amber:COLORS.red
 
+  // Build unified table rows: panels + edge banding
+  const tableRows = []
+  cost.materials_breakdown.forEach(mb => {
+    mb.panels.forEach((p,j) => {
+      tableRows.push({ type:'panel', mb, p, j, isFirst: j===0, rowSpan: mb.panels.length })
+    })
+  })
+  // Edge banding as a row in the same table
+  tableRows.push({ type:'edge' })
+
   return (
     <Modal onClose={onClose} width={740}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
@@ -26,9 +36,8 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
               {sku.sku_code} · {sku.sub_category} · {sku.width_cm}×{sku.depth_cm}×{sku.height_cm} cm
               {sku.doors_count>0&&` · ${sku.doors_count} ${sku.door_type} doors`}
               {sku.spaces_count>0&&` · ${sku.spaces_count} spaces`}
-              {sku.hangers_count>0&&` · ${sku.hangers_count} hangers`}
+              {cost.derived_partitions>0&&` · ${cost.derived_partitions} partitions`}
               · Handle: {sku.handle_type||'Normal'}
-              {cost.derived_partitions>0&&` · ${cost.derived_partitions} partitions (derived)`}
             </div>
           </div>
         </div>
@@ -36,13 +45,14 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
       </div>
 
       <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
-        <StatCard label="Production Cost (EGP)" value={fmt(cost.production_cost)} color={COLORS.amber} icon="box"/>
-        <StatCard label="Net Profit (EGP)" value={cost.commercial?fmt(cost.commercial.net_profit):'—'} color={cost.commercial?.net_profit>0?COLORS.green:COLORS.red} icon="dollar"/>
+        <StatCard label="COGS (EGP)" value={fmt(cost.cogs)} color={COLORS.amber} icon="box"/>
+        <StatCard label="Production Cost (EGP)" value={fmt(cost.production_cost)} color={COLORS.orange} icon="layers"/>
         <StatCard label="Net Margin" value={cost.commercial?fmtP(m):'—'} color={mc} icon="chart"/>
       </div>
 
+      {/* Materials + Edge Banding unified table */}
       <div style={{marginBottom:16}}>
-        <div style={{...lSt(),marginBottom:10}}>Material Breakdown</div>
+        <div style={{...lSt(),marginBottom:10}}>Material & Edge Banding Breakdown</div>
         <div style={{background:COLORS.bg,borderRadius:10,overflow:'hidden'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
             <thead><tr style={{borderBottom:`1px solid ${COLORS.border}`}}>
@@ -51,30 +61,35 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
               ))}
             </tr></thead>
             <tbody>
-              {cost.materials_breakdown.map((mb,i)=>mb.panels.map((p,j)=>(
-                <tr key={`${i}-${j}`} style={{borderBottom:`1px solid ${COLORS.border}`}}>
-                  {j===0&&<td rowSpan={mb.panels.length} style={{padding:'8px 12px',fontWeight:600,color:COLORS.text,verticalAlign:'top',borderRight:`1px solid ${COLORS.border}`}}>{mb.material_name}<br/><span style={{fontSize:10,color:COLORS.textMuted}}>{fmt(mb.price_per_sheet)}/sheet</span></td>}
+              {tableRows.map((row,idx)=>{
+                if(row.type==='edge') {
+                  return <tr key="edge" style={{borderBottom:`1px solid ${COLORS.border}`,background:COLORS.surfaceHover}}>
+                    <td style={{padding:'8px 12px',fontWeight:600,color:COLORS.text}}>Edge Banding</td>
+                    <td style={{padding:'6px 12px',color:COLORS.textDim}}>All exposed edges</td>
+                    <td style={{padding:'6px 12px',textAlign:'right',color:COLORS.textDim}}>—</td>
+                    <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'monospace',color:COLORS.textDim}}>—</td>
+                    <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'monospace',color:COLORS.text}}>{cost.edge_banding.total_m.toFixed(1)} m</td>
+                    <td style={{padding:'8px 12px',textAlign:'right',color:COLORS.textMuted,fontSize:10}}>{fmt(cost.edge_banding.price_per_m)}/m</td>
+                    <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:COLORS.accent}}>{fmt(cost.edge_banding.cost)}</td>
+                  </tr>
+                }
+                const {mb,p,j,isFirst,rowSpan}=row
+                return <tr key={idx} style={{borderBottom:`1px solid ${COLORS.border}`}}>
+                  {isFirst&&<td rowSpan={rowSpan} style={{padding:'8px 12px',fontWeight:600,color:COLORS.text,verticalAlign:'top',borderRight:`1px solid ${COLORS.border}`}}>{mb.material_name}<br/><span style={{fontSize:10,color:COLORS.textMuted}}>{fmt(mb.price_per_sheet)}/sheet</span></td>}
                   <td style={{padding:'6px 12px',color:COLORS.textDim}}>{p.name}</td>
                   <td style={{padding:'6px 12px',textAlign:'right',color:COLORS.textDim}}>{p.quantity}</td>
                   <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'monospace',color:COLORS.textDim}}>{fmtA(p.unit_area_m2)}</td>
                   <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'monospace',color:COLORS.text}}>{fmtA(p.total_area_m2)}</td>
-                  {j===0&&<td rowSpan={mb.panels.length} style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:COLORS.text,verticalAlign:'top',borderLeft:`1px solid ${COLORS.border}`}}>{mb.required_sheets}</td>}
-                  {j===0&&<td rowSpan={mb.panels.length} style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:COLORS.accent,verticalAlign:'top'}}>{fmt(mb.material_cost)}</td>}
+                  {isFirst&&<td rowSpan={rowSpan} style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:COLORS.text,verticalAlign:'top',borderLeft:`1px solid ${COLORS.border}`}}>{mb.required_sheets}</td>}
+                  {isFirst&&<td rowSpan={rowSpan} style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:COLORS.accent,verticalAlign:'top'}}>{fmt(mb.material_cost)}</td>}
                 </tr>
-              )))}
-              <tr style={{background:COLORS.surfaceHover}}>
-                <td colSpan={5} style={{padding:'8px 12px',fontWeight:700,color:COLORS.text}}>Edge Banding ({cost.edge_banding.total_m.toFixed(1)} m @ {fmt(cost.edge_banding.price_per_m)} EGP/m)</td>
-                <td/><td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:COLORS.accent}}>{fmt(cost.edge_banding.cost)}</td>
-              </tr>
-              {cost.overhead_amount>0&&<tr style={{background:COLORS.surfaceHover}}>
-                <td colSpan={5} style={{padding:'8px 12px',fontWeight:700,color:COLORS.text}}>Overhead ({(cost.overhead_percent*100).toFixed(0)}%)</td>
-                <td/><td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:COLORS.accent}}>{fmt(cost.overhead_amount)}</td>
-              </tr>}
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* Accessories */}
       <div style={{marginBottom:16}}>
         <div style={{...lSt(),marginBottom:10}}>Accessories</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))',gap:8}}>
@@ -89,26 +104,58 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
         </div>
       </div>
 
-      {cost.commercial && <div>
+      {/* Commercial Waterfall */}
+      <div>
         <div style={{...lSt(),marginBottom:10}}>Commercial Analysis</div>
         <div style={{background:COLORS.bg,borderRadius:10,padding:16}}>
-          {[
-            {l:'Selling Price',v:cost.commercial.selling_price,c:COLORS.text,s:''},
-            {l:`Commission (${((commercial.commission_percent||0)*100).toFixed(0)}%)`,v:cost.commercial.commission,c:COLORS.red,s:'−'},
-            {l:`VAT (${((commercial.vat_percent||0)*100).toFixed(0)}%)`,v:cost.commercial.vat,c:COLORS.red,s:'−'},
-            {l:`Seller Margin (${((commercial.seller_margin_percent||0)*100).toFixed(0)}%)`,v:cost.commercial.seller_margin,c:COLORS.red,s:'−'},
-            {l:'Production Cost',v:cost.production_cost,c:COLORS.red,s:'−'},
-          ].map(r=>(
-            <div key={r.l} style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
-              <span style={{color:COLORS.textDim}}>{r.l}</span><span style={{color:r.c,fontWeight:600}}>{r.s}{fmt(r.v)} EGP</span>
+          {/* COGS */}
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+            <span style={{color:COLORS.text,fontWeight:700}}>COGS</span><span style={{color:COLORS.text,fontWeight:700}}>{fmt(cost.cogs)} EGP</span>
+          </div>
+          {/* Overhead */}
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+            <span style={{color:COLORS.textDim}}>+ Overhead ({(cost.overhead_percent*100).toFixed(0)}%)</span>
+            <span style={{color:COLORS.textDim,fontWeight:600}}>{fmt(cost.overhead_amount)} EGP</span>
+          </div>
+          <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:10,fontSize:14}}>
+            <span style={{color:COLORS.text,fontWeight:800}}>Production Cost</span><span style={{color:COLORS.accent,fontWeight:800}}>{fmt(cost.production_cost)} EGP</span>
+          </div>
+
+          {cost.commercial && <>
+            <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+              <span style={{color:COLORS.textDim}}>+ Seller Margin ({((commercial.seller_margin_percent||0)*100).toFixed(0)}%)</span>
+              <span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.seller_margin)} EGP</span>
             </div>
-          ))}
-          <div style={{height:1,background:COLORS.border,margin:'12px 0'}}/>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:16,fontWeight:800}}>
-            <span style={{color:COLORS.text}}>Net Profit</span><span style={{color:mc}}>{fmt(cost.commercial.net_profit)} EGP ({fmtP(m)})</span>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+              <span style={{color:COLORS.textDim}}>+ Homzmart Margin ({((commercial.homzmart_margin_percent||commercial.commission_percent||0)*100).toFixed(0)}%)</span>
+              <span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.homzmart_margin)} EGP</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+              <span style={{color:COLORS.textDim}}>+ VAT ({((commercial.vat_percent||0)*100).toFixed(0)}%)</span>
+              <span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.vat)} EGP</span>
+            </div>
+            <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+              <span style={{color:COLORS.text,fontWeight:600}}>Selling Price</span>
+              <span style={{color:COLORS.text,fontWeight:700}}>{fmt(cost.commercial.selling_price)} EGP</span>
+            </div>
+            <div style={{height:2,background:mc,margin:'10px 0',borderRadius:1}}/>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:16,fontWeight:800}}>
+              <span style={{color:COLORS.text}}>Net Profit</span>
+              <span style={{color:mc}}>{fmt(cost.commercial.net_profit)} EGP ({fmtP(m)})</span>
+            </div>
+          </>}
+
+          {/* Recommended Selling Price */}
+          <div style={{marginTop:16,padding:'12px 14px',background:COLORS.accent+'12',borderRadius:8,border:`1px solid ${COLORS.accent}30`}}>
+            <div style={{fontSize:11,fontWeight:700,color:COLORS.accent,letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:4}}>Recommended Selling Price</div>
+            <div style={{fontSize:22,fontWeight:900,color:COLORS.accent}}>{fmt(cost.recommended_selling_price)} EGP</div>
+            <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>Break-even price to cover COGS + Overhead + all margins + VAT</div>
           </div>
         </div>
-      </div>}
+      </div>
 
       <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:20}}>
         <Btn variant="secondary" size="sm" onClick={onEdit}><Icon name="edit" size={14}/> Edit</Btn>
@@ -148,10 +195,8 @@ export function EditSKUModal({ sku, materials, catDefaults, onSave, onClose }) {
         <div><label style={lSt()}>No. of Spaces</label><input type="number" value={f.spaces_count||0} onChange={e=>set('spaces_count',+e.target.value)} style={iSt()} min={0}/></div>
         <div><label style={lSt()}>No. of Hangers</label><input type="number" value={f.hangers_count||0} onChange={e=>set('hangers_count',+e.target.value)} style={iSt()} min={0}/></div>
         <div><label style={lSt()}>Handle Type</label><select value={f.handle_type||'Normal'} onChange={e=>set('handle_type',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{HANDLE_TYPES.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
-        <div><label style={lSt()}>Internal Division</label><select value={f.internal_division||'NO'} onChange={e=>set('internal_division',e.target.value)} style={{...iSt(),cursor:'pointer'}}><option value="NO">NO</option><option value="YES">YES</option></select></div>
         <div><label style={lSt()}>Primary Color</label><input type="text" value={f.primary_color||''} onChange={e=>set('primary_color',e.target.value)} style={iSt()}/></div>
         <div><label style={lSt()}>Body Material</label><select value={f.body_material_id} onChange={e=>set('body_material_id',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-        <div><label style={lSt()}>Door Material</label><select value={f.door_material_id} onChange={e=>set('door_material_id',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
         <div><label style={lSt()}>Back Material</label><select value={f.back_material_id} onChange={e=>set('back_material_id',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
         <div><label style={lSt()}>Selling Price (EGP)</label><input type="number" value={f.selling_price} onChange={e=>set('selling_price',+e.target.value)} style={iSt()} min={0}/></div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 0'}}>
