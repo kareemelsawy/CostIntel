@@ -10,11 +10,15 @@
 
 function generatePanels(sku, matMap) {
   const { width_cm:w, depth_cm:d, height_cm:h, doors_count:dc, shelves_count:sc,
-          partitions_count:pc, body_material_id:bm, back_material_id:bkm, door_material_id:dm } = sku
+          partitions_count:pc, body_material_id:bm, back_material_id:bkm, door_material_id:dm,
+          has_sliding_system:sl, door_type:dt } = sku
   const bodyMat = matMap[bm], backMat = matMap[bkm], doorMat = matMap[dm]
   if (!bodyMat) return { error: `Body material "${bm}" not found`, panels: [] }
   if (!backMat) return { error: `Back material "${bkm}" not found`, panels: [] }
-  if (dc > 0 && !doorMat) return { error: `Door material "${dm}" not found`, panels: [] }
+
+  // Only generate wood door panels for Hinged doors (not Sliding/Open)
+  const hasWoodDoors = dc > 0 && !sl && dt !== 'Open' && dt !== 'Sliding'
+  if (hasWoodDoors && !doorMat) return { error: `Door material "${dm}" not found`, panels: [] }
 
   const panels = []
   panels.push({ name:'Side Panels', qty:2, unit_area:h*d, total_area:2*h*d, mid:bm, mat:bodyMat, edge_cm:2*h })
@@ -22,7 +26,7 @@ function generatePanels(sku, matMap) {
   panels.push({ name:'Bottom Panel', qty:1, unit_area:w*d, total_area:w*d, mid:bm, mat:bodyMat, edge_cm:w })
   if (pc > 0) panels.push({ name:'Partitions', qty:pc, unit_area:h*d, total_area:pc*h*d, mid:bm, mat:bodyMat, edge_cm:pc*h })
   if (sc > 0) panels.push({ name:'Shelves', qty:sc, unit_area:w*d, total_area:sc*w*d, mid:bm, mat:bodyMat, edge_cm:sc*w })
-  if (dc > 0) {
+  if (hasWoodDoors) {
     const dw = w/dc, da = h*dw
     panels.push({ name:'Doors', qty:dc, unit_area:da, total_area:dc*da, mid:dm, mat:doorMat, edge_cm:dc*2*(h+dw) })
   }
@@ -79,8 +83,9 @@ function calcAccessories(sku, accList, useGood) {
     items.push({ name:'Shelf Supports', acc_id:'SHELF_SUPPORT', qty, unit_price:gp('SHELF_SUPPORT'), cost: qty*gp('SHELF_SUPPORT') })
   }
   if (sl) {
-    items.push({ name: byId['GLASS_SLIDE']?.name||'Sliding Door', acc_id:'GLASS_SLIDE', qty:1, unit_price:gp('GLASS_SLIDE'), cost: gp('GLASS_SLIDE') })
-    items.push({ name: byId['LATCH_SLIDE']?.name||'Slide Latch', acc_id:'LATCH_SLIDE', qty:1, unit_price:gp('LATCH_SLIDE'), cost: gp('LATCH_SLIDE') })
+    const slideQty = dc || 1
+    items.push({ name: byId['GLASS_SLIDE']?.name||'Sliding Door', acc_id:'GLASS_SLIDE', qty:slideQty, unit_price:gp('GLASS_SLIDE'), cost: slideQty*gp('GLASS_SLIDE') })
+    items.push({ name: byId['LATCH_SLIDE']?.name||'Slide Latch', acc_id:'LATCH_SLIDE', qty:slideQty, unit_price:gp('LATCH_SLIDE'), cost: slideQty*gp('LATCH_SLIDE') })
   }
   if (mir) {
     const mc = Number(mirC) || dc || 1
@@ -103,6 +108,7 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
     shelves_count: Number(sku.shelves_count)||0, partitions_count: derivedPartitions,
     has_sliding_system: Boolean(sku.has_sliding_system), has_mirror: Boolean(sku.has_mirror),
     mirror_count: Number(sku.mirror_count)||0, handle_type: sku.handle_type || 'Normal',
+    door_type: sku.door_type || 'Hinged',
     body_material_id: sku.body_material_id||'MDF_17_F2', back_material_id: sku.back_material_id||'MDF_3.2_F1',
     door_material_id: sku.door_material_id||'MDF_17_F2', selling_price: Number(sku.selling_price)||0,
   }
@@ -196,6 +202,7 @@ export function skuToEngineInput(row) {
     spaces_count:row.spaces_count||0, has_sliding_system: row.has_sliding_system || row.door_type==='Sliding',
     has_mirror: row.has_mirror === true || row.has_mirror === 'YES',
     mirror_count: row.mirror_count||0, handle_type: row.handle_type||'Normal',
+    door_type: row.door_type||'Hinged',
     body_material_id:row.body_material_id||'MDF_17_F2',
     back_material_id:row.back_material_id||'MDF_3.2_F1', door_material_id:row.door_material_id||'MDF_17_F2',
     selling_price:row.selling_price,
