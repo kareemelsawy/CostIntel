@@ -131,6 +131,7 @@ export default function App() {
   }
 
   const userName = user?.user_metadata?.full_name?.split(' ')[0] || (hasSupabase ? '' : 'there')
+  const userFullName = user?.user_metadata?.full_name || (hasSupabase ? '' : 'Demo User')
 
   // Show login if Supabase is configured and user not authenticated
   if (!authChecked) return <div className="login-page"><div style={{ color: '#64748B', fontSize: 14 }}>Loading...</div></div>
@@ -140,7 +141,6 @@ export default function App() {
     { id: 'analytics', icon: 'chart', label: 'Dashboard' },
     { id: 'catalog', icon: 'grid', label: 'SKU Catalog' },
     { id: 'calculator', icon: 'calc', label: 'Calculator' },
-    { id: 'pricing', icon: 'dollar', label: 'Price Config' },
   ]
 
   return (
@@ -167,13 +167,33 @@ export default function App() {
             </div>
           })}
         </nav>
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${COLORS.border}` }}>
-          <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 6 }}>{skus.length} SKUs · {materials.length} Materials</div>
-          {user && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="" style={{ width: 24, height: 24, borderRadius: 12 }} /> : <Icon name="user" size={14} color={COLORS.textMuted} />}
-            <span style={{ fontSize: 12, color: COLORS.textDim, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</span>
-            <button onClick={() => { signOut(); setUser(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: COLORS.textMuted }} title="Sign out"><Icon name="logout" size={14} /></button>
-          </div>}
+
+        {/* Bottom section — Settings + User profile (Pulse-style) */}
+        <div style={{ padding: '4px 8px', borderTop: `1px solid ${COLORS.border}` }}>
+          {/* Settings nav item */}
+          <div onClick={() => setView('pricing')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: view === 'pricing' ? COLORS.surfaceHover : 'transparent', color: view === 'pricing' ? COLORS.text : COLORS.textDim, marginBottom: 4, transition: 'all 0.15s' }}
+            onMouseEnter={e => { if (view !== 'pricing') e.currentTarget.style.background = COLORS.surfaceHover }} onMouseLeave={e => { if (view !== 'pricing') e.currentTarget.style.background = 'transparent' }}>
+            <span style={{ width: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="settings" size={15} /></span>
+            <span style={{ fontWeight: 500, fontSize: 13 }}>Settings</span>
+          </div>
+        </div>
+
+        {/* User profile card */}
+        <div style={{ padding: '12px 12px', borderTop: `1px solid ${COLORS.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {user?.user_metadata?.avatar_url
+              ? <img src={user.user_metadata.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0 }} referrerPolicy="no-referrer" />
+              : <div style={{ width: 32, height: 32, borderRadius: 10, background: COLORS.accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="user" size={16} color={COLORS.accent} /></div>
+            }
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userFullName || 'Guest'}</div>
+              <div style={{ fontSize: 10, color: COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email || ''}</div>
+            </div>
+            <button onClick={() => { signOut(); setUser(null); localStorage.clear() }} title="Sign out" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: COLORS.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = COLORS.red} onMouseLeave={e => e.currentTarget.style.color = COLORS.textMuted}>
+              <Icon name="logout" size={16} />
+            </button>
+          </div>
         </div>
       </aside>}
 
