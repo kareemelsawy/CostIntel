@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { COLORS } from '../lib/constants'
 
 // ─── SVG Icon Set ────────────────────────────────────────────────────────────
@@ -6,7 +7,6 @@ export function Icon({ name, size = 16, color = 'currentColor', style: s }) {
   const icons = {
     grid:        <svg {...p}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
     calc:        <svg {...p}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/><line x1="14" y1="18" x2="16" y2="18"/></svg>,
-    settings:    <svg {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
     chart:       <svg {...p}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>,
     search:      <svg {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
     plus:        <svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
@@ -28,10 +28,10 @@ export function Icon({ name, size = 16, color = 'currentColor', style: s }) {
     menu:        <svg {...p}><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
     filter:      <svg {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
     fileText:    <svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
-    copy:        <svg {...p}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
-    eye:         <svg {...p}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
     save:        <svg {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
     refresh:     <svg {...p}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
+    logout:      <svg {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+    user:        <svg {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   }
   return icons[name] || <svg {...p}><circle cx="12" cy="12" r="9"/></svg>
 }
@@ -54,8 +54,13 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
   )
 }
 
-// ─── Modal ───────────────────────────────────────────────────────────────────
+// ─── Modal (ESC to close) ─────────────────────────────────────────────────────
 export function Modal({ children, onClose, width = 560 }) {
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200,
@@ -66,19 +71,16 @@ export function Modal({ children, onClose, width = 560 }) {
         background: COLORS.surface, border: `1px solid ${COLORS.border}`,
         borderRadius: 14, padding: 28, width, maxWidth: '100%',
         maxHeight: '92vh', overflowY: 'auto',
-        boxShadow: `0 24px 64px ${COLORS.shadow}`,
-        animation: 'slideUp 0.2s ease',
+        boxShadow: `0 24px 64px ${COLORS.shadow}`, animation: 'slideUp 0.2s ease',
       }}>{children}</div>
     </div>
   )
 }
 
-// ─── Card ────────────────────────────────────────────────────────────────────
 export function Card({ children, style: s }) {
   return <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 20, ...s }}>{children}</div>
 }
 
-// ─── Stat Card ───────────────────────────────────────────────────────────────
 export function StatCard({ label, value, sub, color, icon }) {
   return (
     <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: '16px 18px', flex: 1, minWidth: 150 }}>
@@ -94,7 +96,6 @@ export function StatCard({ label, value, sub, color, icon }) {
   )
 }
 
-// ─── Toggle ──────────────────────────────────────────────────────────────────
 export function Toggle({ value, onChange }) {
   return (
     <div onClick={() => onChange(!value)} style={{
@@ -111,7 +112,6 @@ export function Toggle({ value, onChange }) {
   )
 }
 
-// ─── Toast Container ─────────────────────────────────────────────────────────
 export function ToastContainer({ toasts }) {
   return (
     <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 300, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -130,15 +130,3 @@ export function ToastContainer({ toasts }) {
     </div>
   )
 }
-
-// ─── Shared input / label styles ─────────────────────────────────────────────
-export const iStyle = () => ({
-  width: '100%', background: COLORS.inputBg, border: `1px solid ${COLORS.border}`,
-  borderRadius: 8, padding: '8px 12px', color: COLORS.text, fontSize: 13,
-  outline: 'none', lineHeight: 1.5, fontFamily: 'inherit',
-})
-export const lStyle = () => ({
-  fontSize: 11, fontWeight: 700, color: COLORS.textMuted,
-  letterSpacing: '0.06em', textTransform: 'uppercase',
-  display: 'block', marginBottom: 6, lineHeight: 1.4,
-})
