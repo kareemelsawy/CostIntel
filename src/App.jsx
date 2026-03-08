@@ -66,10 +66,12 @@ export default function App() {
   const [view, setView] = useState('analytics')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [toasts, setToasts] = useState([])
-  const [skus, setSkus] = useState(() => loadLS(LS_SKUS, SAMPLE_SKUS))
+  // When Supabase is configured, start with empty SKUs and wait for DB — don't seed from localStorage
+  const [skus, setSkus] = useState(() => hasSupabase ? [] : loadLS(LS_SKUS, SAMPLE_SKUS))
   const [materials, setMaterials] = useState(() => loadLS(LS_MATS, DEFAULT_MATERIALS))
   const [accessories, setAccessories] = useState(() => loadLS(LS_ACCS, DEFAULT_ACCESSORIES))
   const [commercial, setCommercial] = useState(() => loadLS(LS_COMM, DEFAULT_COMMERCIAL))
+  const [dbLoading, setDbLoading] = useState(hasSupabase)
   const [selectedSku, setSelectedSku] = useState(null)
   const [editingSku, setEditingSku] = useState(null)
   const [editingMat, setEditingMat] = useState(null)
@@ -98,26 +100,75 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Sync with Supabase if connected
+  // Sync with Supabase if connected — load all data, then subscribe to real-time SKU changes
   useEffect(() => {
     if (!hasSupabase || !user) return
-    Promise.all([
-      supabase.from('materials').select('*').eq('is_active', true),
-      supabase.from('accessories').select('*').eq('is_active', true),
-      supabase.from('commercial_settings').select('*'),
-      supabase.from('skus').select('*').eq('is_active', true).order('created_at', { ascending: false }),
-      dbLoadEngineOverrides(),
-    ]).then(([mR, aR, cR, sR, eR]) => {
-      if (mR.data?.length) setMaterials(mR.data)
-      if (aR.data?.length) setAccessories(aR.data)
-      if (cR.data?.length) { const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c })) }
-      if (sR.data?.length) setSkus(sR.data)
-      if (eR.data?.length) {
-        const overrides = {}
-        eR.data.forEach(r => { try { overrides[r.override_key] = JSON.parse(r.override_value) } catch { overrides[r.override_key] = r.override_value } })
-        setEngineOverrides(overrides)
+    setDbLoading(true)
+
+    async function loadAll() {
+      try {
+        const [mR, aR, cR, sR, eR] = await Promise.all([
+          supabase.from('materials').select('*').eq('is_active', true),
+          supabase.from('accessories').select('*').eq('is_active', true),
+          supabase.from('commercial_settings').select('*'),
+          supabase.from('skus').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+          dbLoadEngineOverrides(),
+        ])
+        if (mR.error) console.warn('materials load error:', mR.error)
+        else if (mR.data?.length) setMaterials(mR.data)
+
+        if (aR.error) console.warn('accessories load error:', aR.error)
+        else if (aR.data?.length) setAccessories(aR.data)
+
+        if (cR.error) console.warn('commercial load error:', cR.error)
+        else if (cR.data?.length) {
+          const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c }))
+        }
+
+        if (sR.error) { toast('Failed to load SKUs: ' + sR.error.message, 'error') }
+        else { setSkus(sR.data || []) }  // always replace — even empty array is correct
+
+        if (eR.data?.length) {
+          const overrides = {}
+          eR.data.forEach(r => { try { overrides[r.override_key] = JSON.parse(r.override_value) } catch { overrides[r.override_key] = r.override_value } })
+          setEngineOverrides(overrides)
+        }
+      } catch (e) {
+        console.warn('DB load error:', e)
+        toast('Database connection error', 'error')
+      } finally {
+        setDbLoading(false)
       }
-    }).catch(e => console.warn('DB:', e))
+    }
+
+    loadAll()
+
+    // Real-time subscription — any INSERT/UPDATE/DELETE on skus propagates to all users instantly
+    const channel = supabase
+      .channel('skus-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'skus' }, payload => {
+        const row = payload.new
+        if (row.is_active !== false) {
+          setSkus(prev => {
+            if (prev.some(s => s.sku_code === row.sku_code)) return prev  // already have it
+            return [row, ...prev]
+          })
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'skus' }, payload => {
+        const row = payload.new
+        if (row.is_active === false) {
+          setSkus(prev => prev.filter(s => s.sku_code !== row.sku_code))
+        } else {
+          setSkus(prev => prev.map(s => s.sku_code === row.sku_code ? row : s))
+        }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'skus' }, payload => {
+        setSkus(prev => prev.filter(s => s.sku_code !== payload.old.sku_code))
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [user])
 
   useEffect(() => { setThemeColors(isDark); document.body.setAttribute('data-theme', isDark ? 'dark' : 'light') }, [isDark])
@@ -158,11 +209,15 @@ export default function App() {
   }
 
   async function handleImportSKUs(newSkus) {
-    setSkus(p => [...p, ...newSkus])
+    // NOTE: CatalogPage already called setSkus() before invoking this callback.
+    // This function only handles the DB write and final toast.
     if (hasSupabase) {
       const { error } = await dbUpsertSKUs(newSkus)
-      if (error) toast('DB import failed: ' + error.message, 'error')
-      else toast(`Imported ${newSkus.length} SKUs`)
+      if (error) {
+        toast('DB import failed: ' + error.message + ' — SKUs are visible locally but not saved to database', 'error')
+      } else {
+        toast(`Imported ${newSkus.length} SKUs — now visible to all users`)
+      }
     } else {
       toast(`Imported ${newSkus.length} SKUs`)
     }
@@ -287,6 +342,12 @@ export default function App() {
         <header style={{ height: 52, background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0 }}>
           <button onClick={() => setSidebarOpen(p => !p)} style={{ background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', padding: '4px 6px', borderRadius: 6 }}><Icon name="menu" size={18} /></button>
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+          {dbLoading && (
+            <span style={{ fontSize: 11, color: COLORS.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: COLORS.amber, display: 'inline-block', animation: 'pulse 1.2s ease-in-out infinite' }} />
+              Syncing from database…
+            </span>
+          )}
           <div style={{ marginLeft: 'auto' }} />
           <button onClick={() => setIsDark(!isDark)} style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, padding: '5px 10px', cursor: 'pointer', color: COLORS.textDim, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
             <Icon name={isDark ? 'sun' : 'moon'} size={15} color={COLORS.textMuted} /> {isDark ? 'Light' : 'Dark'}

@@ -79,6 +79,23 @@ CREATE POLICY "auth_w_com" ON commercial_settings
   WITH CHECK (auth.role() = 'authenticated');
 
 
+-- ─── 4. Enable Realtime for SKUs table ─────────────────────
+-- This allows the app to subscribe to live INSERT/UPDATE/DELETE events
+-- so all users see new SKUs instantly without refreshing.
+BEGIN;
+  -- Add skus to the realtime publication if not already there
+  DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND tablename = 'skus'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE skus;
+    END IF;
+  END $$;
+COMMIT;
+
+
 -- ─── Done ───────────────────────────────────────────────────
 -- After running this script:
 --   - engine_overrides table is ready
