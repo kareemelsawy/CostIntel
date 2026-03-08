@@ -18,6 +18,22 @@ export async function signInWithGoogle() {
   return { data, error }
 }
 
+export async function signInWithEmail(email, password) {
+  if (!supabase) return { error: { message: 'Supabase not configured' } }
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  return { data, error }
+}
+
+export async function signUpWithEmail(email, password, fullName) {
+  if (!supabase) return { error: { message: 'Supabase not configured' } }
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { full_name: fullName } },
+  })
+  return { data, error }
+}
+
 export async function signOut() {
   if (!supabase) return
   await supabase.auth.signOut()

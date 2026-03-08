@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { COLORS, setThemeColors } from './lib/constants'
 import { calculateSKUCost, skuToEngineInput } from './lib/engine'
 import { DEFAULT_MATERIALS, DEFAULT_ACCESSORIES, DEFAULT_COMMERCIAL, SAMPLE_SKUS, CATEGORY_MATERIAL_DEFAULTS } from './lib/defaults'
-import { supabase, hasSupabase, signInWithGoogle, signOut,
+import { supabase, hasSupabase, signInWithGoogle, signInWithEmail, signUpWithEmail, signOut,
   dbUpsertSKU, dbUpsertSKUs, dbDeleteSKU, dbClearAllSKUs,
   dbUpsertMaterial, dbDeleteMaterial, dbUpdateMaterialPrice,
   dbUpsertAccessory, dbDeleteAccessory, dbUpdateAccessoryPrice,
@@ -27,51 +27,150 @@ function saveLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val))
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
 function LoginPage({ onLogin }) {
+  const [mode, setMode]       = useState('google')   // 'google' | 'email' | 'signup'
+  const [email, setEmail]     = useState('')
+  const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
+  const [success, setSuccess] = useState('')
 
   async function handleGoogleLogin() {
     if (!hasSupabase) { onLogin({ email: 'demo@homzmart.com', user_metadata: { full_name: 'Demo User', avatar_url: '' } }); return }
     setLoading(true); setError('')
     const { error: err } = await signInWithGoogle()
+    if (err) { setError(typeof err === 'string' ? err : err.message || 'Login failed'); setLoading(false) }
+  }
+
+  async function handleEmailLogin(e) {
+    e.preventDefault()
+    if (!email || !password) { setError('Email and password required'); return }
+    setLoading(true); setError('')
+    const { error: err } = await signInWithEmail(email, password)
     if (err) { setError(err.message || 'Login failed'); setLoading(false) }
+    // on success, onAuthStateChange fires automatically
+  }
+
+  async function handleSignUp(e) {
+    e.preventDefault()
+    if (!email || !password || !fullName) { setError('All fields required'); return }
+    if (!email.endsWith('@homzmart.com')) { setError('Only @homzmart.com emails are allowed'); return }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    setLoading(true); setError('')
+    const { data, error: err } = await signUpWithEmail(email, password, fullName)
+    setLoading(false)
+    if (err) { setError(err.message); return }
+    if (data?.user?.identities?.length === 0) { setError('This email is already registered. Try signing in.'); return }
+    setSuccess('Account created! Check your email to confirm, then sign in.')
+    setMode('email')
+  }
+
+  const inp = {
+    width: '100%', background: '#1C2030', border: '1px solid #252A3A', borderRadius: 10,
+    padding: '12px 14px', color: '#E2E8F0', fontSize: 14, outline: 'none',
+    fontFamily: 'inherit', transition: 'border-color 0.2s',
   }
 
   return (
     <div className="login-page">
-      <div className="login-card">
-        <div style={{ marginBottom: 32 }}>
+      <div className="login-card" style={{ width: 420 }}>
+        {/* Logo */}
+        <div style={{ marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 16 }}>
             <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg,#4F8EF7,#A78BFA)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect x="6" y="6" width="6" height="20" rx="1" fill="#fff" opacity="0.9"/><rect x="16" y="6" width="6" height="20" rx="1" fill="#fff" opacity="0.65"/><rect x="6" y="6" width="16" height="5" rx="1" fill="#fff"/></svg>
             </div>
           </div>
-          <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 28, fontWeight: 800, color: '#E2E8F0', letterSpacing: '-0.02em', marginBottom: 8 }}>CostIntel</h1>
-          <p style={{ fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>Material costing intelligence for furniture operations</p>
+          <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 26, fontWeight: 800, color: '#E2E8F0', letterSpacing: '-0.02em', marginBottom: 6 }}>CostIntel</h1>
+          <p style={{ fontSize: 13, color: '#64748B' }}>Homzmart furniture costing intelligence</p>
         </div>
 
-        {/* ── No Supabase warning ── */}
+        {/* No Supabase warning */}
         {!hasSupabase && (
           <div style={{ background: '#F59E0B18', border: '1px solid #F59E0B44', borderRadius: 10, padding: '12px 14px', marginBottom: 20, textAlign: 'left' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#F59E0B', marginBottom: 6 }}>⚠️ Database not connected</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#F59E0B', marginBottom: 4 }}>⚠️ No database connected</div>
             <div style={{ fontSize: 11, color: '#94A3B8', lineHeight: 1.6 }}>
-              No <code style={{ background: '#0D0F14', padding: '1px 5px', borderRadius: 4, color: '#F59E0B' }}>.env</code> file found with Supabase credentials.<br/>
-              Running in <strong style={{ color: '#E2E8F0' }}>local-only demo mode</strong> — data is stored in this browser only and not shared with other users.<br/><br/>
-              To enable shared access, create a <code style={{ background: '#0D0F14', padding: '1px 5px', borderRadius: 4, color: '#4F8EF7' }}>.env</code> file with:
+              Running in local demo mode. Add <code style={{ background: '#0D0F14', padding: '1px 5px', borderRadius: 4, color: '#4F8EF7' }}>.env</code> with Supabase credentials to enable shared access.
             </div>
-            <pre style={{ marginTop: 8, background: '#0D0F14', borderRadius: 6, padding: '8px 10px', fontSize: 10, color: '#4F8EF7', overflowX: 'auto', lineHeight: 1.7 }}>
-{`VITE_SUPABASE_URL=https://xxx.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key`}
-            </pre>
           </div>
         )}
 
-        <button className="google-btn" onClick={handleGoogleLogin} disabled={loading}>
-          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-          {!hasSupabase ? 'Continue in Demo Mode' : loading ? 'Signing in...' : 'Sign in with Google'}
-        </button>
-        {error && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
-        {hasSupabase && <p style={{ fontSize: 11, color: '#475569', marginTop: 20 }}>Restricted to @homzmart.com accounts</p>}
+        {/* Success message */}
+        {success && (
+          <div style={{ background: '#22C55E18', border: '1px solid #22C55E44', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 13, color: '#22C55E' }}>
+            ✓ {success}
+          </div>
+        )}
+
+        {/* Error message */}
+        {error && (
+          <div style={{ background: '#EF444418', border: '1px solid #EF444444', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 13, color: '#EF4444' }}>
+            {error}
+          </div>
+        )}
+
+        {/* Mode tabs */}
+        {hasSupabase && (
+          <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#0D0F14', borderRadius: 10, padding: 4 }}>
+            {[
+              { id: 'google', label: 'Google' },
+              { id: 'email',  label: 'Email login' },
+              { id: 'signup', label: 'Create account' },
+            ].map(t => (
+              <button key={t.id} onClick={() => { setMode(t.id); setError(''); setSuccess('') }}
+                style={{ flex: 1, padding: '7px 4px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                  background: mode === t.id ? '#1C2030' : 'transparent',
+                  color: mode === t.id ? '#E2E8F0' : '#64748B',
+                  transition: 'all 0.15s' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Google sign-in */}
+        {(!hasSupabase || mode === 'google') && (
+          <button className="google-btn" onClick={handleGoogleLogin} disabled={loading}>
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            {!hasSupabase ? 'Continue in Demo Mode' : loading ? 'Redirecting…' : 'Sign in with Google'}
+          </button>
+        )}
+
+        {/* Email login */}
+        {hasSupabase && mode === 'email' && (
+          <form onSubmit={handleEmailLogin} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input type="email" placeholder="your@homzmart.com" value={email} onChange={e => setEmail(e.target.value)}
+              style={inp} onFocus={e => e.target.style.borderColor = '#4F8EF7'} onBlur={e => e.target.style.borderColor = '#252A3A'} />
+            <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}
+              style={inp} onFocus={e => e.target.style.borderColor = '#4F8EF7'} onBlur={e => e.target.style.borderColor = '#252A3A'} />
+            <button type="submit" disabled={loading} style={{
+              background: 'linear-gradient(135deg,#4F8EF7,#A78BFA)', color: '#fff', border: 'none',
+              borderRadius: 10, padding: '13px', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit', opacity: loading ? 0.7 : 1, transition: 'opacity 0.2s',
+            }}>{loading ? 'Signing in…' : 'Sign in'}</button>
+          </form>
+        )}
+
+        {/* Sign up */}
+        {hasSupabase && mode === 'signup' && (
+          <form onSubmit={handleSignUp} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input type="text" placeholder="Full name" value={fullName} onChange={e => setFullName(e.target.value)}
+              style={inp} onFocus={e => e.target.style.borderColor = '#4F8EF7'} onBlur={e => e.target.style.borderColor = '#252A3A'} />
+            <input type="email" placeholder="your@homzmart.com" value={email} onChange={e => setEmail(e.target.value)}
+              style={inp} onFocus={e => e.target.style.borderColor = '#4F8EF7'} onBlur={e => e.target.style.borderColor = '#252A3A'} />
+            <input type="password" placeholder="Password (min 6 chars)" value={password} onChange={e => setPassword(e.target.value)}
+              style={inp} onFocus={e => e.target.style.borderColor = '#4F8EF7'} onBlur={e => e.target.style.borderColor = '#252A3A'} />
+            <button type="submit" disabled={loading} style={{
+              background: 'linear-gradient(135deg,#4F8EF7,#A78BFA)', color: '#fff', border: 'none',
+              borderRadius: 10, padding: '13px', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit', opacity: loading ? 0.7 : 1, transition: 'opacity 0.2s',
+            }}>{loading ? 'Creating account…' : 'Create account'}</button>
+            <p style={{ fontSize: 11, color: '#475569', textAlign: 'center' }}>Restricted to @homzmart.com emails only</p>
+          </form>
+        )}
+
+        {!hasSupabase && <p style={{ fontSize: 11, color: '#475569', marginTop: 16 }}>No auth required in demo mode</p>}
       </div>
     </div>
   )
@@ -383,17 +482,30 @@ export default function App() {
 
           {/* User profile card */}
           <div style={{ padding: '10px 12px', borderTop: `1px solid ${COLORS.border}` }}>
-            <div onClick={() => setView('settings')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px', borderRadius: 10, cursor: 'pointer', transition: 'background 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.background = COLORS.surfaceHover}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              {user?.user_metadata?.avatar_url
-                ? <img src={user.user_metadata.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0 }} referrerPolicy="no-referrer" />
-                : <div style={{ width: 32, height: 32, borderRadius: 10, background: COLORS.accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="user" size={16} color={COLORS.accent} /></div>
-              }
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userFullName}</div>
-                <div style={{ fontSize: 10, color: COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email || 'demo@homzmart.com'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Avatar + name — click to go to settings */}
+              <div onClick={() => setView('settings')} style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 1, minWidth: 0, padding: '6px 8px', borderRadius: 10, cursor: 'pointer', transition: 'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background = COLORS.surfaceHover}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                {user?.user_metadata?.avatar_url
+                  ? <img src={user.user_metadata.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0 }} referrerPolicy="no-referrer" />
+                  : <div style={{ width: 30, height: 30, borderRadius: 9, background: COLORS.accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="user" size={15} color={COLORS.accent} /></div>
+                }
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userFullName}</div>
+                  <div style={{ fontSize: 10, color: COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email || 'demo@homzmart.com'}</div>
+                </div>
               </div>
+              {/* Logout button — always visible */}
+              <button
+                onClick={handleSignOut}
+                title="Sign out"
+                style={{ background: 'none', border: `1px solid ${COLORS.border}`, cursor: 'pointer', padding: '6px 7px', borderRadius: 8, color: COLORS.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.color = COLORS.red; e.currentTarget.style.borderColor = COLORS.red + '66'; e.currentTarget.style.background = COLORS.red + '12' }}
+                onMouseLeave={e => { e.currentTarget.style.color = COLORS.textMuted; e.currentTarget.style.borderColor = COLORS.border; e.currentTarget.style.background = 'none' }}
+              >
+                <Icon name="logout" size={15} />
+              </button>
             </div>
           </div>
         </aside>
