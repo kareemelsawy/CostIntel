@@ -2,13 +2,18 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { COLORS, setThemeColors } from './lib/constants'
 import { calculateSKUCost, skuToEngineInput } from './lib/engine'
 import { DEFAULT_MATERIALS, DEFAULT_ACCESSORIES, DEFAULT_COMMERCIAL, SAMPLE_SKUS, CATEGORY_MATERIAL_DEFAULTS } from './lib/defaults'
-import { supabase, hasSupabase, signInWithGoogle, signOut, getUser } from './lib/supabase'
+import { supabase, hasSupabase, signInWithGoogle, signOut, getUser,
+  dbUpsertSKU, dbUpsertSKUs, dbDeleteSKU,
+  dbUpsertMaterial, dbDeleteMaterial, dbUpdateMaterialPrice,
+  dbUpsertAccessory, dbDeleteAccessory, dbUpdateAccessoryPrice,
+  dbUpdateCommercial, dbLoadEngineOverrides } from './lib/supabase'
 import { Icon, Btn, ToastContainer } from './components/UI'
 import { SKUDetailModal, EditSKUModal, EditMaterialModal } from './components/Modals'
 import CatalogPage from './pages/CatalogPage'
 import CalculatorPage from './pages/CalculatorPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import PricingPage from './pages/PricingPage'
+import EngineOverridesPage from './pages/EngineOverridesPage'
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 const LS_SKUS = 'costintel_skus'
@@ -69,6 +74,7 @@ export default function App() {
   const [editingSku, setEditingSku] = useState(null)
   const [editingMat, setEditingMat] = useState(null)
   const [calcPrefill, setCalcPrefill] = useState(null)
+  const [engineOverrides, setEngineOverrides] = useState({})
 
   // Persist to localStorage on change
   useEffect(() => { saveLS(LS_SKUS, skus) }, [skus])
@@ -100,11 +106,17 @@ export default function App() {
       supabase.from('accessories').select('*').eq('is_active', true),
       supabase.from('commercial_settings').select('*'),
       supabase.from('skus').select('*').eq('is_active', true).order('created_at', { ascending: false }),
-    ]).then(([mR, aR, cR, sR]) => {
+      dbLoadEngineOverrides(),
+    ]).then(([mR, aR, cR, sR, eR]) => {
       if (mR.data?.length) setMaterials(mR.data)
       if (aR.data?.length) setAccessories(aR.data)
       if (cR.data?.length) { const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c })) }
       if (sR.data?.length) setSkus(sR.data)
+      if (eR.data?.length) {
+        const overrides = {}
+        eR.data.forEach(r => { try { overrides[r.override_key] = JSON.parse(r.override_value) } catch { overrides[r.override_key] = r.override_value } })
+        setEngineOverrides(overrides)
+      }
     }).catch(e => console.warn('DB:', e))
   }, [user])
 
@@ -118,16 +130,89 @@ export default function App() {
     const m = {}; skus.forEach(s => { m[s.sku_code] = calculateSKUCost(skuToEngineInput(s), materials, accessories, commercial) }); return m
   }, [skus, materials, accessories, commercial])
 
-  function handleSaveSku(data) {
-    if (editingSku?._isNew) { if (!data.sku_code) data.sku_code = 'SKU-' + Date.now().toString(36).toUpperCase(); setSkus(p => [...p, data]); toast('SKU added') }
-    else { setSkus(p => p.map(s => s.sku_code === editingSku.sku_code ? data : s)); toast('SKU updated') }
+  async function handleSaveSku(data) {
+    if (editingSku?._isNew) {
+      if (!data.sku_code) data.sku_code = 'SKU-' + Date.now().toString(36).toUpperCase()
+      setSkus(p => [...p, data])
+      if (hasSupabase) { const { error } = await dbUpsertSKU(data); if (error) toast('DB save failed: ' + error.message, 'error') }
+      toast('SKU added')
+    } else {
+      setSkus(p => p.map(s => s.sku_code === editingSku.sku_code ? data : s))
+      if (hasSupabase) { const { error } = await dbUpsertSKU(data); if (error) toast('DB save failed: ' + error.message, 'error') }
+      toast('SKU updated')
+    }
     setEditingSku(null)
   }
-  function handleSaveSkuFromReport(data) { setSkus(p => p.map(s => s.sku_code === data.sku_code ? data : s)); setSelectedSku(data); toast('Materials updated') }
-  function handleSaveMat(data) {
-    if (editingMat?._isNew) { setMaterials(p => [...p, data]); toast('Material added') }
-    else { setMaterials(p => p.map(m => m.material_id === editingMat.material_id ? data : m)); toast('Material updated') }
+
+  async function handleSaveSkuFromReport(data) {
+    setSkus(p => p.map(s => s.sku_code === data.sku_code ? data : s))
+    setSelectedSku(data)
+    if (hasSupabase) { const { error } = await dbUpsertSKU(data); if (error) toast('DB save failed: ' + error.message, 'error') }
+    toast('Materials updated')
+  }
+
+  async function handleDeleteSku(sku_code) {
+    setSkus(p => p.filter(x => x.sku_code !== sku_code))
+    if (hasSupabase) await dbDeleteSKU(sku_code)
+    toast('Removed')
+  }
+
+  async function handleImportSKUs(newSkus) {
+    setSkus(p => [...p, ...newSkus])
+    if (hasSupabase) {
+      const { error } = await dbUpsertSKUs(newSkus)
+      if (error) toast('DB import failed: ' + error.message, 'error')
+      else toast(`Imported ${newSkus.length} SKUs`)
+    } else {
+      toast(`Imported ${newSkus.length} SKUs`)
+    }
+  }
+
+  async function handleSaveMat(data) {
+    if (editingMat?._isNew) {
+      setMaterials(p => [...p, data])
+      if (hasSupabase) await dbUpsertMaterial(data)
+      toast('Material added')
+    } else {
+      setMaterials(p => p.map(m => m.material_id === editingMat.material_id ? data : m))
+      if (hasSupabase) await dbUpsertMaterial(data)
+      toast('Material updated')
+    }
     setEditingMat(null)
+  }
+
+  async function handleDeleteMaterial(material_id) {
+    setMaterials(p => p.filter(x => x.material_id !== material_id))
+    if (hasSupabase) await dbDeleteMaterial(material_id)
+    toast('Removed')
+  }
+
+  async function handleUpdateMatPrice(material_id, price, price_good) {
+    setMaterials(p => p.map(m => m.material_id === material_id ? { ...m, price, price_good } : m))
+    if (hasSupabase) await dbUpdateMaterialPrice(material_id, price, price_good)
+  }
+
+  async function handleSaveAcc(data) {
+    setAccessories(p => p.map(a => a.acc_id === data.acc_id ? data : a))
+    if (hasSupabase) await dbUpsertAccessory(data)
+  }
+
+  async function handleDeleteAccessory(acc_id) {
+    setAccessories(p => p.filter(x => x.acc_id !== acc_id))
+    if (hasSupabase) await dbDeleteAccessory(acc_id)
+    toast('Removed')
+  }
+
+  async function handleUpdateAccPrice(acc_id, price, price_good) {
+    setAccessories(p => p.map(a => a.acc_id === acc_id ? { ...a, price, price_good } : a))
+    if (hasSupabase) await dbUpdateAccessoryPrice(acc_id, price, price_good)
+  }
+
+  async function handleUpdateCommercial(updates) {
+    setCommercial(p => ({ ...p, ...updates }))
+    if (hasSupabase) {
+      await Promise.all(Object.entries(updates).map(([key, value]) => dbUpdateCommercial(key, value)))
+    }
   }
 
   const userName = user?.user_metadata?.full_name?.split(' ')[0] || (hasSupabase ? '' : 'there')
@@ -141,6 +226,7 @@ export default function App() {
     { id: 'analytics', icon: 'chart', label: 'Dashboard' },
     { id: 'catalog', icon: 'grid', label: 'SKU Catalog' },
     { id: 'calculator', icon: 'calc', label: 'Calculator' },
+    { id: 'engine', icon: 'zap', label: 'Engine Rules' },
   ]
 
   return (
@@ -210,9 +296,10 @@ export default function App() {
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {view === 'analytics' && <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
-            {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
-            {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
-            {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}
+            {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSku={handleDeleteSku} onImportSKUs={handleImportSKUs} />}
+            {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onSaveSku={async (s) => { setSkus(p => [...p, s]); if (hasSupabase) await dbUpsertSKU(s); toast('Saved to catalog') }} />}
+            {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} onUpdateMatPrice={handleUpdateMatPrice} onDeleteMaterial={handleDeleteMaterial} onUpdateAccPrice={handleUpdateAccPrice} onDeleteAccessory={handleDeleteAccessory} onUpdateCommercial={handleUpdateCommercial} />}
+            {view === 'engine' && <EngineOverridesPage overrides={engineOverrides} setOverrides={setEngineOverrides} toast={toast} />}
           </div>
         </main>
       </div>

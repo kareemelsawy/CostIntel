@@ -5,7 +5,7 @@ import { Icon, Btn, Card } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
 
-export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults }) {
+export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, onDeleteSku, onImportSKUs }) {
   const [search,setSearch]=useState('')
   const [filterCat,setFilterCat]=useState('All')
   const [filterDoor,setFilterDoor]=useState('All')
@@ -44,7 +44,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
     const file=e.target.files?.[0];if(!file)return;const reader=new FileReader()
     reader.onload=(ev)=>{try{const lines=ev.target.result.split('\n').filter(l=>l.trim());if(lines.length<2){toast('Empty file','error');return};const hdrs=lines[0].replace(/^\uFEFF/,'').split(',').map(h=>h.trim());const imported=[]
     for(let i=1;i<lines.length;i++){const vals=[];let cur='',inQ=false;for(const ch of lines[i]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch};vals.push(cur.trim());const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.replace(/^"|"$/g,'')});if(!row['SKU']&&!row['Product name'])continue;imported.push(csvRowToSku(row,catDefaults))}
-    setSkus(prev=>[...prev,...imported]);toast(`Imported ${imported.length} SKUs`)}catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file);e.target.value=''
+    setSkus(prev=>{const updated=[...prev,...imported];if(onImportSKUs)onImportSKUs(imported);else toast(`Imported ${imported.length} SKUs`);return updated})}catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file);e.target.value=''
   }
 
   return (
@@ -99,7 +99,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                 <td style={{padding:'8px 12px'}}><span style={{color:mc,fontWeight:700}}>{c?.commercial?fmtP(m):'—'}</span></td>
                 <td style={{padding:'8px 12px'}}><div style={{display:'flex',gap:4}}>
                   <button onClick={e=>{e.stopPropagation();setEditingSku({...s})}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="edit" size={14}/></button>
-                  <button onClick={e=>{e.stopPropagation();setSkus(p=>p.filter(x=>x.sku_code!==s.sku_code));toast('Removed')}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="trash" size={14}/></button>
+                  <button onClick={e=>{e.stopPropagation();if(onDeleteSku)onDeleteSku(s.sku_code);else{setSkus(p=>p.filter(x=>x.sku_code!==s.sku_code));toast('Removed')}}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="trash" size={14}/></button>
                 </div></td>
               </tr>
             })}</tbody>
