@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { COLORS, setThemeColors } from './lib/constants'
 import { calculateSKUCost, skuToEngineInput } from './lib/engine'
 import { DEFAULT_MATERIALS, DEFAULT_ACCESSORIES, DEFAULT_COMMERCIAL, SAMPLE_SKUS, CATEGORY_MATERIAL_DEFAULTS } from './lib/defaults'
-import { supabase, hasSupabase, signInWithGoogle, signOut, getUser,
+import { supabase, hasSupabase, signInWithGoogle, signOut,
   dbUpsertSKU, dbUpsertSKUs, dbDeleteSKU,
   dbUpsertMaterial, dbDeleteMaterial, dbUpdateMaterialPrice,
   dbUpsertAccessory, dbDeleteAccessory, dbUpdateAccessoryPrice,
@@ -84,19 +84,27 @@ export default function App() {
   useEffect(() => { saveLS(LS_ACCS, accessories) }, [accessories])
   useEffect(() => { saveLS(LS_COMM, commercial) }, [commercial])
 
-  // Auth check
+  // Auth check — rely solely on onAuthStateChange which fires INITIAL_SESSION
+  // reliably after restoring the session from storage. getUser() races against
+  // session restoration and returns null on a fresh browser load.
   useEffect(() => {
     if (!hasSupabase) { setAuthChecked(true); return }
-    getUser().then(u => {
-      if (u && u.email?.endsWith('@homzmart.com')) setUser(u)
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const u = session?.user
+      if (u && u.email?.endsWith('@homzmart.com')) {
+        setUser(u)
+      } else if (u) {
+        // Logged in but wrong domain
+        signOut()
+        setUser(null)
+      } else {
+        setUser(null)
+      }
+      // Mark auth as checked after first event (INITIAL_SESSION, SIGNED_IN, or SIGNED_OUT)
       setAuthChecked(true)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const u = session?.user
-      if (u && u.email?.endsWith('@homzmart.com')) { setUser(u) }
-      else if (u) { signOut(); setUser(null) }
-      else setUser(null)
-    })
+
     return () => subscription.unsubscribe()
   }, [])
 
