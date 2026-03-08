@@ -73,6 +73,12 @@ export async function dbDeleteSKU(sku_code) {
   return { error }
 }
 
+export async function dbClearAllSKUs() {
+  if (!supabase) return { error: 'No DB' }
+  const { error } = await supabase.from('skus').update({ is_active: false }).eq('is_active', true)
+  return { error }
+}
+
 // ─── Material / Accessory / Commercial persistence ────────────────────────────
 export async function dbUpsertMaterial(mat) {
   if (!supabase) return { error: 'No DB' }
@@ -116,6 +122,29 @@ export async function dbUpdateCommercial(key, value) {
   if (!supabase) return { error: 'No DB' }
   const { error } = await supabase.from('commercial_settings').update({ value }).eq('key', key)
   return { error }
+}
+
+// ─── User profiles ────────────────────────────────────────────────────────────
+// profiles table mirrors auth.users — upserted on every login
+export async function dbUpsertProfile(user) {
+  if (!supabase) return { error: 'No DB' }
+  const { error } = await supabase.from('profiles').upsert({
+    id: user.id,
+    email: user.email,
+    full_name: user.user_metadata?.full_name || '',
+    avatar_url: user.user_metadata?.avatar_url || '',
+    last_seen: new Date().toISOString(),
+  }, { onConflict: 'id' })
+  return { error }
+}
+
+export async function dbLoadProfiles() {
+  if (!supabase) return { data: [], error: null }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('last_seen', { ascending: false })
+  return { data: data || [], error }
 }
 
 // ─── Engine overrides persistence ─────────────────────────────────────────────

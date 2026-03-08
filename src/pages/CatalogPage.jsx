@@ -5,7 +5,7 @@ import { Icon, Btn, Card } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
 
-export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, onDeleteSku, onImportSKUs }) {
+export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, onDeleteSku, onImportSKUs, onClearAll }) {
   const [search,setSearch]=useState('')
   const [filterCat,setFilterCat]=useState('All')
   const [filterDoor,setFilterDoor]=useState('All')
@@ -15,6 +15,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   const [sortDir,setSortDir]=useState('asc')
   const [showFilters,setShowFilters]=useState(false)
   const [importing,setImporting]=useState(false)
+  const [clearConfirm,setClearConfirm]=useState(false)
   const importRef=useRef()
 
   const sellers = useMemo(()=>[...new Set(skus.map(s=>s.seller).filter(Boolean))].sort(),[skus])
@@ -163,6 +164,15 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
           <Btn variant="secondary" size="sm" onClick={downloadTemplate}><Icon name="fileText" size={14}/> Template</Btn>
           <Btn variant="secondary" size="sm" onClick={()=>importRef.current?.click()} disabled={importing}><Icon name="upload" size={14}/> {importing ? 'Importing…' : 'Upload CSV'}</Btn>
           <Btn variant="secondary" size="sm" onClick={exportCSV}><Icon name="download" size={14}/> Export</Btn>
+          {skus.length > 0 && (
+            clearConfirm
+              ? <Btn variant="danger" size="sm" onClick={()=>{ if(onClearAll) onClearAll(); else { setSkus([]); toast(`Cleared ${skus.length} SKUs`) }; setClearConfirm(false) }}>
+                  <Icon name="trash" size={14}/> Confirm clear {skus.length} SKUs
+                </Btn>
+              : <Btn variant="danger" size="sm" onClick={()=>setClearConfirm(true)} onMouseLeave={()=>setTimeout(()=>setClearConfirm(false),3000)}>
+                  <Icon name="trash" size={14}/> Clear All
+                </Btn>
+          )}
           <Btn size="sm" onClick={()=>{const def=catDefaults['Wardrobes'];setEditingSku({sku_code:'',name:'',image_link:'',seller:'',sub_category:'Wardrobes',commercial_material:'MDF',width_cm:100,depth_cm:60,height_cm:210,door_type:'Hinged',doors_count:2,drawers_count:0,shelves_count:4,spaces_count:2,hangers_count:1,internal_division:'NO',unit_type:'Floor Standing',has_mirror:false,mirror_count:0,primary_color:'',handle_type:'Normal',has_back_panel:'Close',body_material_id:def.body,back_material_id:def.back,door_material_id:def.door,selling_price:0,_isNew:true})}}><Icon name="plus" size={14}/> Add SKU</Btn>
         </div>
       </div>
