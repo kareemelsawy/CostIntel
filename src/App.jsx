@@ -294,7 +294,7 @@ export default function App() {
             </div>
             <div>
               <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 15, letterSpacing: '-0.02em', color: COLORS.accent }}>CostIntel</div>
-              <div style={{ fontSize: 10, color: COLORS.textMuted }}>v4.0</div>
+              <div style={{ fontSize: 10, color: COLORS.textMuted }}>v5.0</div>
             </div>
           </div>
         </div>

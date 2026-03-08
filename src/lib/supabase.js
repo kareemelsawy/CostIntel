@@ -36,21 +36,34 @@ export async function getUser() {
 }
 
 // ─── SKU persistence ──────────────────────────────────────────────────────────
-// Strip internal-only fields before sending to DB
+// Explicit whitelist of DB columns — any extra fields on the SKU object (has_sliding_system, _isNew, etc.)
+// will cause Supabase PostgREST to reject the entire upsert with a 42703 column-not-found error.
+const SKU_DB_COLUMNS = [
+  'sku_code','name','image_link','seller','sub_category','commercial_material',
+  'width_cm','depth_cm','height_cm','door_type','doors_count','drawers_count',
+  'shelves_count','spaces_count','hangers_count','internal_division','unit_type',
+  'has_mirror','mirror_count','primary_color','handle_type','has_back_panel',
+  'body_material_id','back_material_id','door_material_id','selling_price',
+]
 function skuForDb(sku) {
-  const { _isNew, ...rest } = sku
-  return rest
+  const out = {}
+  SKU_DB_COLUMNS.forEach(col => { if (sku[col] !== undefined) out[col] = sku[col] })
+  return out
 }
 
 export async function dbUpsertSKU(sku) {
   if (!supabase) return { error: 'No DB' }
-  const { error } = await supabase.from('skus').upsert(skuForDb(sku), { onConflict: 'sku_code' })
+  const payload = skuForDb(sku)
+  const { error } = await supabase.from('skus').upsert(payload, { onConflict: 'sku_code' })
+  if (error) console.error('[dbUpsertSKU]', error.code, error.message, payload)
   return { error }
 }
 
 export async function dbUpsertSKUs(skus) {
   if (!supabase) return { error: 'No DB' }
-  const { error } = await supabase.from('skus').upsert(skus.map(skuForDb), { onConflict: 'sku_code' })
+  const payload = skus.map(skuForDb)
+  const { error } = await supabase.from('skus').upsert(payload, { onConflict: 'sku_code' })
+  if (error) console.error('[dbUpsertSKUs]', error.code, error.message, 'first row:', payload[0])
   return { error }
 }
 
