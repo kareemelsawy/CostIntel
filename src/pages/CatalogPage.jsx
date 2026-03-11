@@ -66,9 +66,24 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   function downloadTemplate(){const blob=new Blob([CSV_COLUMNS.join(',')+'\\n'],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_upload_template.csv';a.click();toast('Template downloaded')}
   function handleImport(e){
     const file=e.target.files?.[0];if(!file)return;const reader=new FileReader()
-    reader.onload=(ev)=>{try{const lines=ev.target.result.split('\\n').filter(l=>l.trim());if(lines.length<2){toast('Empty file','error');return};const hdrs=lines[0].replace(/^\\uFEFF/,'').split(',').map(h=>h.trim());const imported=[]
-    for(let i=1;i<lines.length;i++){const vals=[];let cur='',inQ=false;for(const ch of lines[i]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch};vals.push(cur.trim());const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.replace(/^"|"$/g,'')});if(!row['SKU']&&!row['Product name'])continue;imported.push(csvRowToSku(row,catDefaults))}
-    setSkus(prev=>{const existing=new Set(prev.map(s=>s.sku_code));const newOnes=imported.filter(s=>!existing.has(s.sku_code));const updated=imported.filter(s=>existing.has(s.sku_code));const merged=prev.map(s=>{const u=updated.find(x=>x.sku_code===s.sku_code);return u||s});const result=[...merged,...newOnes];toast(`Imported ${newOnes.length} new, updated ${updated.length} SKUs`);return result})}catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file);e.target.value=''
+    reader.onload=(ev)=>{try{
+      // Strip BOM, normalise CRLF → LF, split
+      const raw=ev.target.result.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n')
+      const lines=raw.split('\n').filter(l=>l.trim())
+      if(lines.length<2){toast('Empty file — no data rows found','error');return}
+      const hdrs=lines[0].split(',').map(h=>h.trim())
+      const imported=[]
+      for(let i=1;i<lines.length;i++){
+        const vals=[];let cur='',inQ=false
+        for(const ch of lines[i]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch}
+        vals.push(cur.trim())
+        const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.replace(/^"|"$/g,'').replace(/#N\/A/g,'').trim()})
+        if(!row['SKU']&&!row['Product name'])continue
+        imported.push(csvRowToSku(row,catDefaults))
+      }
+      if(imported.length===0){toast('No valid SKU rows found in file','error');return}
+      setSkus(prev=>{const existing=new Set(prev.map(s=>s.sku_code));const newOnes=imported.filter(s=>!existing.has(s.sku_code));const updated=imported.filter(s=>existing.has(s.sku_code));const merged=prev.map(s=>{const u=updated.find(x=>x.sku_code===s.sku_code);return u||s});const result=[...merged,...newOnes];toast(`Imported ${newOnes.length} new, updated ${updated.length} SKUs`);return result})
+    }catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file,{encoding:'utf-8'});e.target.value=''
   }
 
   const cbStyle = { width: 15, height: 15, cursor: 'pointer', accentColor: COLORS.accent }

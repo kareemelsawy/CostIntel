@@ -48,25 +48,35 @@ const selectSt = () => ({
 })
 
 function VarsReference() {
+  const [open, setOpen] = useState(false)
   return (
-    <div style={{ background:COLORS.surface, border:`1px solid ${COLORS.border}`, borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
-      <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:8 }}>📐 Formula variables</div>
-      <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-        {[
-          ['W','Width cm'],['D','Depth cm'],['H','Height cm'],
-          ['DOORS','# Doors'],['DRAWERS','# Drawers'],['SHELVES','# Shelves'],
-          ['SPACES','# Spaces'],['qty','This rule qty (edge only)'],
-          ['DOOR_TYPE','"Hinged"/"Sliding"/"Open"'],['HANDLE_TYPE','"Normal"/"Handleless"'],['HAS_MIRROR','true/false'],
-        ].map(([v,d]) => (
-          <div key={v} style={{ display:'flex', alignItems:'center', gap:5, background:COLORS.bg, border:`1px solid ${COLORS.border}`, borderRadius:6, padding:'3px 8px' }}>
-            <code style={{ fontFamily:'DM Mono,monospace', fontSize:11, color:COLORS.amber, fontWeight:700 }}>{v}</code>
-            <span style={{ fontSize:11, color:COLORS.textMuted }}>{d}</span>
+    <div style={{ border:`1px solid ${COLORS.border}`, borderRadius:10, marginBottom:16, overflow:'hidden' }}>
+      <div onClick={()=>setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 14px', background:COLORS.surface, cursor:'pointer', userSelect:'none' }}>
+        <span style={{ fontSize:12, fontWeight:700, color:COLORS.textMuted, letterSpacing:'0.04em' }}>📐 Formula variables reference</span>
+        <div style={{ color:COLORS.textMuted, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none' }}>
+          <Icon name="arrowDown" size={13}/>
+        </div>
+      </div>
+      {open && (
+        <div style={{ padding:'12px 14px', background:COLORS.bg, borderTop:`1px solid ${COLORS.border}` }}>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
+            {[
+              ['W','Width cm'],['D','Depth cm'],['H','Height cm'],
+              ['DOORS','# Doors'],['DRAWERS','# Drawers'],['SHELVES','# Shelves'],
+              ['SPACES','# Spaces'],['qty','This rule qty (edge only)'],
+              ['DOOR_TYPE','"Hinged"/"Sliding"/"Open"'],['HANDLE_TYPE','"Normal"/"Handleless"'],['HAS_MIRROR','true/false'],
+            ].map(([v,d]) => (
+              <div key={v} style={{ display:'flex', alignItems:'center', gap:5, background:COLORS.surface, border:`1px solid ${COLORS.border}`, borderRadius:6, padding:'3px 8px' }}>
+                <code style={{ fontFamily:'DM Mono,monospace', fontSize:11, color:COLORS.amber, fontWeight:700 }}>{v}</code>
+                <span style={{ fontSize:11, color:COLORS.textMuted }}>{d}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div style={{ marginTop:8, fontSize:11, color:COLORS.textMuted }}>
-        Supports: <code style={{fontFamily:'monospace'}}>+ - * /</code> · comparisons <code style={{fontFamily:'monospace'}}>&gt; &lt; == !=</code> · logic <code style={{fontFamily:'monospace'}}>&amp;&amp; ||</code> · <code style={{fontFamily:'monospace'}}>max(a,b)</code>
-      </div>
+          <div style={{ fontSize:11, color:COLORS.textMuted }}>
+            Supports: <code style={{fontFamily:'monospace'}}>+ - * /</code> · comparisons <code style={{fontFamily:'monospace'}}>&gt; &lt; == !=</code> · logic <code style={{fontFamily:'monospace'}}>&amp;&amp; ||</code> · <code style={{fontFamily:'monospace'}}>max(a,b)</code>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
