@@ -24,8 +24,7 @@ function saveLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val))
 async function syncSkusToSupabase(skuList) {
   if (!hasSupabase || !supabase) return
   try {
-    const rows = skuList.map(s => ({
-      sku_code: s.sku_code, name: s.name || '', image_link: s.image_link || '',
+    const rows = skuList.map(s => ({\n      sku_code: s.sku_code, name: s.name || '', image_link: s.image_link || '',
       seller: s.seller || '', sub_category: s.sub_category || 'Wardrobes',
       commercial_material: s.commercial_material || 'MDF',
       width_cm: s.width_cm, depth_cm: s.depth_cm, height_cm: s.height_cm,
@@ -43,6 +42,14 @@ async function syncSkusToSupabase(skuList) {
     }))
     await supabase.from('skus').upsert(rows, { onConflict: 'sku_code' })
   } catch (e) { console.warn('Sync SKUs error:', e) }
+}
+
+// Soft-delete SKUs from Supabase by setting is_active = false
+async function deleteSkusFromSupabase(skuCodes) {
+  if (!hasSupabase || !supabase || !skuCodes.length) return
+  try {
+    await supabase.from('skus').update({ is_active: false }).in('sku_code', skuCodes)
+  } catch (e) { console.warn('Delete SKUs error:', e) }
 }
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
@@ -179,7 +186,11 @@ export default function App() {
 
   // Load from Supabase on login
   useEffect(() => {
-    if (!hasSupabase || !user) return
+    if (!hasSupabase || !user) {
+      // No Supabase — still mark dbLoaded so local changes persist properly
+      setDbLoaded(true)
+      return
+    }
     Promise.all([
       supabase.from('materials').select('*').eq('is_active', true),
       supabase.from('accessories').select('*').eq('is_active', true),
@@ -261,8 +272,8 @@ export default function App() {
               <text x="256" y="316" fontFamily="'Syne','DM Sans',sans-serif" fontWeight="800" fontSize="240" letterSpacing="-8" textAnchor="middle" fill="#ffffff">CI</text>
             </svg>
             <div>
-              <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 15, letterSpacing: '-0.02em', color: COLORS.accent }}>CostIntel</div>
-              <div style={{ fontSize: 10, color: COLORS.textMuted }}>v4.0</div>
+              <div style={{ fontFamily: "'DM Sans','Segoe UI',sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: '-0.01em', color: COLORS.text }}>CostIntel</div>
+              <div style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: 500 }}>v4.6</div>
             </div>
           </div>
         </div>
@@ -309,7 +320,7 @@ export default function App() {
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {view === 'analytics' && <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
-            {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
+            {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} />}
             {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
             {view === 'engine' && <EnginePage engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
             {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}
