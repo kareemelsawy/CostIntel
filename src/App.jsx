@@ -189,10 +189,10 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Load from Supabase on login
+  // Load SKUs + config from Supabase on mount (SKU reads are public — no auth required)
+  // This runs immediately regardless of login state so Safari/ITP users still see shared data
   useEffect(() => {
-    if (!hasSupabase || !user) {
-      // No Supabase — still mark dbLoaded so local changes persist properly
+    if (!hasSupabase) {
       setDbLoaded(true)
       return
     }
@@ -206,22 +206,23 @@ export default function App() {
       if (aR.data?.length) setAccessories(aR.data)
       if (cR.data?.length) { const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c })) }
       if (sR.data?.length) {
-        skipSyncRef.current = true   // loading from DB — don't echo back
+        skipSyncRef.current = true   // loading from DB — don't echo back to Supabase
         console.log('[CostIntel] Loaded', sR.data.length, 'SKUs from Supabase')
         setSkus(sR.data)
       } else {
-        // DB is empty — push local SKUs if any exist (first-time sync from this browser)
-        const localSkus = loadLS(LS_SKUS, [])
-        if (localSkus.length) {
-          skipSyncRef.current = false
-          syncSkusToSupabase(localSkus)
+        // DB has no SKUs yet — only push local ones if user is authenticated
+        if (user) {
+          const localSkus = loadLS(LS_SKUS, [])
+          if (localSkus.length) {
+            skipSyncRef.current = false
+            syncSkusToSupabase(localSkus)
+          }
         }
       }
-      // Allow sync on future user-initiated changes
       setTimeout(() => { skipSyncRef.current = false }, 500)
       setDbLoaded(true)
-    }).catch(e => { console.error('DB load error:', e); setDbLoaded(true) })
-  }, [user])
+    }).catch(e => { console.error('[CostIntel] DB load error:', e); setDbLoaded(true) })
+  }, [])  // ← runs ONCE on mount, not gated on user
 
   // Write SKUs to Supabase on user-initiated changes only (not on DB load echo)
   useEffect(() => {
