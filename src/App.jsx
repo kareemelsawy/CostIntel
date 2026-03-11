@@ -50,10 +50,21 @@ function LoginPage({ onLogin }) {
   const [error, setError] = useState('')
 
   async function handleGoogleLogin() {
-    if (!hasSupabase) { onLogin({ email: 'demo@homzmart.com', user_metadata: { full_name: 'Demo User', avatar_url: '' } }); return }
+    if (!hasSupabase) {
+      setError('Google Sign-In is not configured yet. Use Demo View to explore.')
+      return
+    }
     setLoading(true); setError('')
     const { error: err } = await signInWithGoogle()
     if (err) { setError(err.message || 'Login failed'); setLoading(false) }
+  }
+
+  function handleDemoView() {
+    onLogin({
+      email: 'demo@costintel.app',
+      user_metadata: { full_name: 'Demo Viewer', avatar_url: '' },
+      _isDemo: true,
+    })
   }
 
   return (
@@ -68,10 +79,23 @@ function LoginPage({ onLogin }) {
           <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 28, fontWeight: 800, color: '#E2E8F0', letterSpacing: '-0.02em', marginBottom: 8 }}>CostIntel</h1>
           <p style={{ fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>Material costing intelligence for furniture operations</p>
         </div>
+
         <button className="google-btn" onClick={handleGoogleLogin} disabled={loading}>
           <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
           {loading ? 'Signing in...' : 'Sign in with Google'}
         </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0' }}>
+          <div style={{ flex: 1, height: 1, background: '#252A3A' }} />
+          <span style={{ fontSize: 11, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>or</span>
+          <div style={{ flex: 1, height: 1, background: '#252A3A' }} />
+        </div>
+
+        <button className="google-btn" onClick={handleDemoView} style={{ background: 'transparent', border: '1px dashed #252A3A' }}>
+          <Icon name="eye" size={18} color="#64748B" />
+          Demo View
+        </button>
+
         {error && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
         <p style={{ fontSize: 11, color: '#475569', marginTop: 20 }}>Restricted to @homzmart.com accounts</p>
       </div>
@@ -107,7 +131,13 @@ export default function App() {
 
   // Auth check — handles initial load AND OAuth redirect return
   useEffect(() => {
-    if (!hasSupabase) { setAuthChecked(true); return }
+    if (!hasSupabase) {
+      // No Supabase — check if user was previously "logged in" via localStorage
+      const savedUser = loadLS('costintel_user', null)
+      if (savedUser) setUser(savedUser)
+      setAuthChecked(true)
+      return
+    }
 
     // Check current session first
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -178,12 +208,16 @@ export default function App() {
     setEditingMat(null)
   }
 
-  const userName = user?.user_metadata?.full_name?.split(' ')[0] || (hasSupabase ? '' : 'there')
-  const userFullName = user?.user_metadata?.full_name || (hasSupabase ? '' : 'Demo User')
+  const isDemo = !!user?._isDemo
+  const userName = user?.user_metadata?.full_name?.split(' ')[0] || 'there'
+  const userFullName = user?.user_metadata?.full_name || 'Demo Viewer'
 
-  // Show login if Supabase is configured and user not authenticated
+  // Save user to localStorage for demo mode persistence
+  useEffect(() => { if (user) saveLS('costintel_user', user) }, [user])
+
+  // Show login if not authenticated (always — both Supabase and demo mode)
   if (!authChecked) return <div className="login-page"><div style={{ color: '#64748B', fontSize: 14 }}>Loading...</div></div>
-  if (hasSupabase && !user) return <LoginPage onLogin={setUser} />
+  if (!user) return <LoginPage onLogin={(u) => { setUser(u); saveLS('costintel_user', u) }} />
 
   const navItems = [
     { id: 'analytics', icon: 'chart', label: 'Dashboard' },
@@ -235,9 +269,9 @@ export default function App() {
             }
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userFullName || 'Guest'}</div>
-              <div style={{ fontSize: 10, color: COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email || ''}</div>
+              <div style={{ fontSize: 10, color: isDemo ? COLORS.amber : COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isDemo ? 'Demo View — data not persisted' : (user?.email || '')}</div>
             </div>
-            <button onClick={async () => { if (hasSupabase) await supabase.auth.signOut(); setUser(null); setDbLoaded(false) }} title="Sign out" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: COLORS.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'color 0.15s' }}
+            <button onClick={async () => { if (hasSupabase && supabase) await supabase.auth.signOut(); setUser(null); setDbLoaded(false); localStorage.removeItem('costintel_user') }} title="Sign out" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: COLORS.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = COLORS.red} onMouseLeave={e => e.currentTarget.style.color = COLORS.textMuted}>
               <Icon name="logout" size={16} />
             </button>
@@ -249,6 +283,10 @@ export default function App() {
         <header style={{ height: 52, background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0 }}>
           <button onClick={() => setSidebarOpen(p => !p)} style={{ background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', padding: '4px 6px', borderRadius: 6 }}><Icon name="menu" size={18} /></button>
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+          {isDemo && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: COLORS.amber + '15', border: `1px solid ${COLORS.amber}33`, borderRadius: 6 }}>
+            <Icon name="eye" size={13} color={COLORS.amber} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: COLORS.amber }}>Demo View</span>
+          </div>}
           <div style={{ marginLeft: 'auto' }} />
           <button onClick={() => setIsDark(!isDark)} style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, padding: '5px 10px', cursor: 'pointer', color: COLORS.textDim, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
             <Icon name={isDark ? 'sun' : 'moon'} size={15} color={COLORS.textMuted} /> {isDark ? 'Light' : 'Dark'}
