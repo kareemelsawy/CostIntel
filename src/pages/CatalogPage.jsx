@@ -5,7 +5,7 @@ import { Icon, Btn, Card } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
 
-export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, onDeleteSku, onImportSKUs, onClearAll }) {
+export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults }) {
   const [search,setSearch]=useState('')
   const [filterCat,setFilterCat]=useState('All')
   const [filterDoor,setFilterDoor]=useState('All')
@@ -14,8 +14,6 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   const [sortBy,setSortBy]=useState('sku_code')
   const [sortDir,setSortDir]=useState('asc')
   const [showFilters,setShowFilters]=useState(false)
-  const [importing,setImporting]=useState(false)
-  const [clearConfirm,setClearConfirm]=useState(false)
   const importRef=useRef()
 
   const sellers = useMemo(()=>[...new Set(skus.map(s=>s.seller).filter(Boolean))].sort(),[skus])
@@ -42,114 +40,11 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
 
   function exportCSV(){const rows=filtered.map(s=>skuToCsvRow(s));const blob=new Blob([CSV_COLUMNS.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_catalog_export.csv';a.click();toast('CSV exported')}
   function downloadTemplate(){const blob=new Blob([CSV_COLUMNS.join(',')+'\n'],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_upload_template.csv';a.click();toast('Template downloaded')}
-
-  // RFC-4180 compliant CSV parser — handles CRLF, LF, quoted fields with embedded commas/newlines, BOM
-  function parseCSV(text) {
-    // Strip BOM, normalise line endings to \n
-    const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    const rows = []
-    let row = [], cur = '', inQ = false, i = 0
-    while (i < clean.length) {
-      const ch = clean[i]
-      if (inQ) {
-        if (ch === '"' && clean[i+1] === '"') { cur += '"'; i += 2; continue }  // escaped quote
-        if (ch === '"') { inQ = false; i++; continue }
-        cur += ch
-      } else {
-        if (ch === '"') { inQ = true; i++; continue }
-        if (ch === ',') { row.push(cur.trim()); cur = ''; i++; continue }
-        if (ch === '\n') {
-          row.push(cur.trim()); cur = ''
-          if (row.some(v => v !== '')) rows.push(row)  // skip blank lines
-          row = []; i++; continue
-        }
-        cur += ch
-      }
-      i++
-    }
-    // flush last row
-    if (cur.trim() || row.length) { row.push(cur.trim()); if (row.some(v => v !== '')) rows.push(row) }
-    return rows
-  }
-
-  function handleImport(e) {
-    const file = e.target.files?.[0]; if (!file) return
-    setImporting(true)
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const rows = parseCSV(ev.target.result)
-        if (rows.length < 2) { toast('File appears empty or has no data rows', 'error'); setImporting(false); return }
-
-        // Headers — strip all whitespace and \r residue
-        const hdrs = rows[0].map(h => h.replace(/[\r\n]/g, '').trim())
-
-        // Build a flexible column-name map to handle minor header variations
-        // e.g. "SKU Code", "sku_code", "SKU" all map to 'SKU'
-        const colMap = {}
-        const normalize = s => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-        const knownCols = {
-          'sku': 'SKU', 'skucode': 'SKU', 'sku_code': 'SKU', 'id': 'SKU',
-          'productname': 'Product name', 'name': 'Product name', 'product': 'Product name',
-          'imagelink': 'Image Link', 'image': 'Image Link', 'imageurl': 'Image Link',
-          'sellername': 'Seller Name', 'seller': 'Seller Name',
-          'subcategory': 'Sub Category', 'category': 'Sub Category',
-          'commercialmaterial': 'Commercial Material', 'material': 'Commercial Material',
-          'widthcm': 'Width (cm)', 'width': 'Width (cm)',
-          'depthcm': 'Depth (cm)', 'depth': 'Depth (cm)',
-          'heightcm': 'Height (cm)', 'height': 'Height (cm)',
-          'doortype': 'Door Type',
-          'noofdoors': 'No. of Doors', 'doors': 'No. of Doors', 'doorscount': 'No. of Doors',
-          'noofdrawers': 'No. of Drawers', 'drawers': 'No. of Drawers',
-          'noofshelves': 'No. of Shelves', 'shelves': 'No. of Shelves',
-          'noofspaces': 'No. of Spaces', 'spaces': 'No. of Spaces',
-          'noofhangers': 'No. of Hangers', 'hangers': 'No. of Hangers',
-          'internaldivision': 'Internal Division',
-          'unittype': 'Unit Type',
-          'hasmirror': 'Has Mirror',
-          'mirrorcount': 'Mirror Count',
-          'primarycolor': 'Primary Color', 'color': 'Primary Color',
-          'handletype': 'Handle Type',
-          'hasbackpanel': 'Has Back Panel',
-          'sellingprice': 'Selling Price', 'price': 'Selling Price',
-        }
-        hdrs.forEach((h, idx) => {
-          const key = normalize(h)
-          colMap[idx] = knownCols[key] || h  // fallback to original header if no match
-        })
-
-        const imported = []
-        let skipped = 0
-        for (let i = 1; i < rows.length; i++) {
-          const vals = rows[i]
-          if (!vals.length || vals.every(v => !v)) continue
-          const row = {}
-          hdrs.forEach((_, j) => { row[colMap[j]] = vals[j] || '' })
-          // Need at least SKU code or product name to be a valid row
-          if (!row['SKU'] && !row['Product name']) { skipped++; continue }
-          imported.push(csvRowToSku(row, catDefaults))
-        }
-
-        if (imported.length === 0) {
-          toast(`No valid rows found. ${skipped} rows skipped (missing SKU & Product name). Check your column headers match the template.`, 'error')
-          setImporting(false); return
-        }
-
-        setSkus(prev => {
-          const updated = [...prev, ...imported]
-          if (onImportSKUs) onImportSKUs(imported)
-          else toast(`Imported ${imported.length} SKUs${skipped > 0 ? ` (${skipped} skipped)` : ''}`)
-          return updated
-        })
-      } catch(err) {
-        toast('Import failed: ' + err.message, 'error')
-        console.error('CSV import error:', err)
-      }
-      setImporting(false)
-    }
-    reader.onerror = () => { toast('Failed to read file', 'error'); setImporting(false) }
-    reader.readAsText(file, 'UTF-8')
-    e.target.value = ''
+  function handleImport(e){
+    const file=e.target.files?.[0];if(!file)return;const reader=new FileReader()
+    reader.onload=(ev)=>{try{const lines=ev.target.result.split('\n').filter(l=>l.trim());if(lines.length<2){toast('Empty file','error');return};const hdrs=lines[0].replace(/^\uFEFF/,'').split(',').map(h=>h.trim());const imported=[]
+    for(let i=1;i<lines.length;i++){const vals=[];let cur='',inQ=false;for(const ch of lines[i]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch};vals.push(cur.trim());const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.replace(/^"|"$/g,'')});if(!row['SKU']&&!row['Product name'])continue;imported.push(csvRowToSku(row,catDefaults))}
+    setSkus(prev=>[...prev,...imported]);toast(`Imported ${imported.length} SKUs`)}catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file);e.target.value=''
   }
 
   return (
@@ -162,17 +57,8 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <input type="file" ref={importRef} accept=".csv" onChange={handleImport} style={{display:'none'}}/>
           <Btn variant="secondary" size="sm" onClick={downloadTemplate}><Icon name="fileText" size={14}/> Template</Btn>
-          <Btn variant="secondary" size="sm" onClick={()=>importRef.current?.click()} disabled={importing}><Icon name="upload" size={14}/> {importing ? 'Importing…' : 'Upload CSV'}</Btn>
+          <Btn variant="secondary" size="sm" onClick={()=>importRef.current?.click()}><Icon name="upload" size={14}/> Upload CSV</Btn>
           <Btn variant="secondary" size="sm" onClick={exportCSV}><Icon name="download" size={14}/> Export</Btn>
-          {skus.length > 0 && (
-            clearConfirm
-              ? <Btn variant="danger" size="sm" onClick={()=>{ if(onClearAll) onClearAll(); else { setSkus([]); toast(`Cleared ${skus.length} SKUs`) }; setClearConfirm(false) }}>
-                  <Icon name="trash" size={14}/> Confirm clear {skus.length} SKUs
-                </Btn>
-              : <Btn variant="danger" size="sm" onClick={()=>setClearConfirm(true)} onMouseLeave={()=>setTimeout(()=>setClearConfirm(false),3000)}>
-                  <Icon name="trash" size={14}/> Clear All
-                </Btn>
-          )}
           <Btn size="sm" onClick={()=>{const def=catDefaults['Wardrobes'];setEditingSku({sku_code:'',name:'',image_link:'',seller:'',sub_category:'Wardrobes',commercial_material:'MDF',width_cm:100,depth_cm:60,height_cm:210,door_type:'Hinged',doors_count:2,drawers_count:0,shelves_count:4,spaces_count:2,hangers_count:1,internal_division:'NO',unit_type:'Floor Standing',has_mirror:false,mirror_count:0,primary_color:'',handle_type:'Normal',has_back_panel:'Close',body_material_id:def.body,back_material_id:def.back,door_material_id:def.door,selling_price:0,_isNew:true})}}><Icon name="plus" size={14}/> Add SKU</Btn>
         </div>
       </div>
@@ -213,7 +99,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                 <td style={{padding:'8px 12px'}}><span style={{color:mc,fontWeight:700}}>{c?.commercial?fmtP(m):'—'}</span></td>
                 <td style={{padding:'8px 12px'}}><div style={{display:'flex',gap:4}}>
                   <button onClick={e=>{e.stopPropagation();setEditingSku({...s})}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="edit" size={14}/></button>
-                  <button onClick={e=>{e.stopPropagation();if(onDeleteSku)onDeleteSku(s.sku_code);else{setSkus(p=>p.filter(x=>x.sku_code!==s.sku_code));toast('Removed')}}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="trash" size={14}/></button>
+                  <button onClick={e=>{e.stopPropagation();setSkus(p=>p.filter(x=>x.sku_code!==s.sku_code));toast('Removed')}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="trash" size={14}/></button>
                 </div></td>
               </tr>
             })}</tbody>
