@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { COLORS, setThemeColors } from './lib/constants'
 import { calculateSKUCost, skuToEngineInput } from './lib/engine'
-import { DEFAULT_MATERIALS, DEFAULT_ACCESSORIES, DEFAULT_COMMERCIAL, SAMPLE_SKUS, CATEGORY_MATERIAL_DEFAULTS } from './lib/defaults'
+import { DEFAULT_MATERIALS, DEFAULT_ACCESSORIES, DEFAULT_COMMERCIAL, SAMPLE_SKUS, CATEGORY_MATERIAL_DEFAULTS, DEFAULT_ENGINE_RULES } from './lib/defaults'
 import { supabase, hasSupabase, signInWithGoogle, signOut, getUser } from './lib/supabase'
 import { Icon, Btn, ToastContainer } from './components/UI'
 import { SKUDetailModal, EditSKUModal, EditMaterialModal } from './components/Modals'
@@ -9,38 +9,39 @@ import CatalogPage from './pages/CatalogPage'
 import CalculatorPage from './pages/CalculatorPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import PricingPage from './pages/PricingPage'
+import EnginePage from './pages/EnginePage'
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 const LS_SKUS = 'costintel_skus'
 const LS_MATS = 'costintel_materials'
 const LS_ACCS = 'costintel_accessories'
 const LS_COMM = 'costintel_commercial'
+const LS_ENGINE = 'costintel_engine_rules'
 function loadLS(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback } catch { return fallback } }
 function saveLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)) } catch {} }
 
-// Upsert SKUs to Supabase (write-through)
+// Upsert SKUs to Supabase — single bulk call so all users see the data
 async function syncSkusToSupabase(skuList) {
-  if (!hasSupabase) return
+  if (!hasSupabase || !supabase) return
   try {
-    for (const s of skuList) {
-      await supabase.from('skus').upsert({
-        sku_code: s.sku_code, name: s.name || '', image_link: s.image_link || '',
-        seller: s.seller || '', sub_category: s.sub_category || 'Wardrobes',
-        commercial_material: s.commercial_material || 'MDF',
-        width_cm: s.width_cm, depth_cm: s.depth_cm, height_cm: s.height_cm,
-        door_type: s.door_type || 'Hinged', doors_count: s.doors_count || 0,
-        drawers_count: s.drawers_count || 0, shelves_count: s.shelves_count || 0,
-        spaces_count: s.spaces_count || 0, hangers_count: s.hangers_count || 0,
-        internal_division: s.internal_division || 'NO', unit_type: s.unit_type || 'Floor Standing',
-        has_mirror: !!s.has_mirror, mirror_count: s.mirror_count || 0,
-        primary_color: s.primary_color || '', handle_type: s.handle_type || 'Normal',
-        has_back_panel: s.has_back_panel || 'Close',
-        body_material_id: s.body_material_id || 'MDF_17_F2',
-        back_material_id: s.back_material_id || 'MDF_3.2_F1',
-        door_material_id: s.door_material_id || 'MDF_17_F2',
-        selling_price: s.selling_price || 0, is_active: true,
-      }, { onConflict: 'sku_code' })
-    }
+    const rows = skuList.map(s => ({
+      sku_code: s.sku_code, name: s.name || '', image_link: s.image_link || '',
+      seller: s.seller || '', sub_category: s.sub_category || 'Wardrobes',
+      commercial_material: s.commercial_material || 'MDF',
+      width_cm: s.width_cm, depth_cm: s.depth_cm, height_cm: s.height_cm,
+      door_type: s.door_type || 'Hinged', doors_count: s.doors_count || 0,
+      drawers_count: s.drawers_count || 0, shelves_count: s.shelves_count || 0,
+      spaces_count: s.spaces_count || 0, hangers_count: s.hangers_count || 0,
+      internal_division: s.internal_division || 'NO', unit_type: s.unit_type || 'Floor Standing',
+      has_mirror: !!s.has_mirror, mirror_count: s.mirror_count || 0,
+      primary_color: s.primary_color || '', handle_type: s.handle_type || 'Normal',
+      has_back_panel: s.has_back_panel || 'Close',
+      body_material_id: s.body_material_id || 'MDF_17_F2',
+      back_material_id: s.back_material_id || 'MDF_3.2_F1',
+      door_material_id: s.door_material_id || 'MDF_17_F2',
+      selling_price: s.selling_price || 0, is_active: true,
+    }))
+    await supabase.from('skus').upsert(rows, { onConflict: 'sku_code' })
   } catch (e) { console.warn('Sync SKUs error:', e) }
 }
 
@@ -74,11 +75,11 @@ function LoginPage({ onLogin }) {
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="52" height="52">
               <defs>
                 <linearGradient id="ci_login_bg" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#4338CA"/>
-                  <stop offset="100%" stopColor="#7C3AED"/>
+                  <stop offset="0%" stopColor="#1C1C1E"/>
+                  <stop offset="100%" stopColor="#48484A"/>
                 </linearGradient>
                 <linearGradient id="ci_login_shine" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.20"/>
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.18"/>
                   <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
                 </linearGradient>
               </defs>
@@ -126,6 +127,7 @@ export default function App() {
   const [materials, setMaterials] = useState(() => loadLS(LS_MATS, DEFAULT_MATERIALS))
   const [accessories, setAccessories] = useState(() => loadLS(LS_ACCS, DEFAULT_ACCESSORIES))
   const [commercial, setCommercial] = useState(() => loadLS(LS_COMM, DEFAULT_COMMERCIAL))
+  const [engineRules, setEngineRules] = useState(() => loadLS(LS_ENGINE, DEFAULT_ENGINE_RULES))
   const [selectedSku, setSelectedSku] = useState(null)
   const [editingSku, setEditingSku] = useState(null)
   const [editingMat, setEditingMat] = useState(null)
@@ -136,6 +138,7 @@ export default function App() {
   useEffect(() => { saveLS(LS_MATS, materials) }, [materials])
   useEffect(() => { saveLS(LS_ACCS, accessories) }, [accessories])
   useEffect(() => { saveLS(LS_COMM, commercial) }, [commercial])
+  useEffect(() => { saveLS(LS_ENGINE, engineRules) }, [engineRules])
 
   // Track if initial DB load is done (to avoid writing defaults back to DB)
   const [dbLoaded, setDbLoaded] = useState(false)
@@ -233,6 +236,8 @@ export default function App() {
     { id: 'analytics', icon: 'chart', label: 'Dashboard' },
     { id: 'catalog', icon: 'grid', label: 'SKU Catalog' },
     { id: 'calculator', icon: 'calc', label: 'Calculator' },
+    { id: 'engine', icon: 'cpu', label: 'Costing Engine' },
+    { id: 'pricing', icon: 'tag', label: 'Pricing Config' },
   ]
 
   return (
@@ -243,11 +248,11 @@ export default function App() {
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="32" height="32" style={{ flexShrink: 0 }}>
               <defs>
                 <linearGradient id="ci_sb_bg" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#4338CA"/>
-                  <stop offset="100%" stopColor="#7C3AED"/>
+                  <stop offset="0%" stopColor="#1C1C1E"/>
+                  <stop offset="100%" stopColor="#48484A"/>
                 </linearGradient>
                 <linearGradient id="ci_sb_shine" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.20"/>
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.18"/>
                   <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
                 </linearGradient>
               </defs>
@@ -271,16 +276,6 @@ export default function App() {
             </div>
           })}
         </nav>
-
-        {/* Bottom section — Settings + User profile (Pulse-style) */}
-        <div style={{ padding: '4px 8px', borderTop: `1px solid ${COLORS.border}` }}>
-          {/* Settings nav item */}
-          <div onClick={() => setView('pricing')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: view === 'pricing' ? COLORS.surfaceHover : 'transparent', color: view === 'pricing' ? COLORS.text : COLORS.textDim, marginBottom: 4, transition: 'all 0.15s' }}
-            onMouseEnter={e => { if (view !== 'pricing') e.currentTarget.style.background = COLORS.surfaceHover }} onMouseLeave={e => { if (view !== 'pricing') e.currentTarget.style.background = 'transparent' }}>
-            <span style={{ width: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="settings" size={15} /></span>
-            <span style={{ fontWeight: 500, fontSize: 13 }}>Settings</span>
-          </div>
-        </div>
 
         {/* User profile card */}
         <div style={{ padding: '12px 12px', borderTop: `1px solid ${COLORS.border}` }}>
@@ -316,6 +311,7 @@ export default function App() {
             {view === 'analytics' && <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
             {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
             {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
+            {view === 'engine' && <EnginePage engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
             {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}
           </div>
         </main>

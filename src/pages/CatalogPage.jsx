@@ -44,7 +44,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
     const file=e.target.files?.[0];if(!file)return;const reader=new FileReader()
     reader.onload=(ev)=>{try{const lines=ev.target.result.split('\n').filter(l=>l.trim());if(lines.length<2){toast('Empty file','error');return};const hdrs=lines[0].replace(/^\uFEFF/,'').split(',').map(h=>h.trim());const imported=[]
     for(let i=1;i<lines.length;i++){const vals=[];let cur='',inQ=false;for(const ch of lines[i]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch};vals.push(cur.trim());const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.replace(/^"|"$/g,'')});if(!row['SKU']&&!row['Product name'])continue;imported.push(csvRowToSku(row,catDefaults))}
-    setSkus(prev=>[...prev,...imported]);toast(`Imported ${imported.length} SKUs`)}catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file);e.target.value=''
+    setSkus(prev=>{const existing=new Set(prev.map(s=>s.sku_code));const newOnes=imported.filter(s=>!existing.has(s.sku_code));return [...prev,...newOnes]})}catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file);e.target.value=''
   }
 
   return (

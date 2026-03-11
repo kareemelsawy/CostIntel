@@ -88,3 +88,50 @@ export const SAMPLE_SKUS = [
   { sku_code:'MAU3081', name:'دولاب خشب ضلفتين سلايد', image_link:'https://eg-rv.homzmart.net/catalog/product/1/1/11_32_116_1.jpg', seller:'Joint For Furniture', sub_category:'Wardrobes', commercial_material:'MDF', width_cm:120, depth_cm:62, height_cm:180, door_type:'Sliding', doors_count:2, drawers_count:0, shelves_count:6, spaces_count:2, hangers_count:1, internal_division:'YES', unit_type:'Floor Standing', has_mirror:false, mirror_count:0, primary_color:'Laminated', handle_type:'Handleless', has_back_panel:'Close', body_material_id:'MDF_17_F2', back_material_id:'MDF_3.2_F1', door_material_id:'MDF_17_F2', selling_price:10000 },
   { sku_code:'PRIWO82546', name:'دريسنج ام دى اف أبيض 240', image_link:'https://eg-rv.homzmart.net/catalog/product/2/1/21_8_49.jpg', seller:'Premier Wood', sub_category:'Dressings', commercial_material:'MDF', width_cm:240, depth_cm:58, height_cm:200, door_type:'Open', doors_count:0, drawers_count:8, shelves_count:10, spaces_count:4, hangers_count:3, internal_division:'YES', unit_type:'Floor Standing', has_mirror:false, mirror_count:0, primary_color:'Laminated', handle_type:'Handleless', has_back_panel:'Close', body_material_id:'MDF_17_F2', back_material_id:'MDF_3.2_F1', door_material_id:'MDF_17_F2', selling_price:10000 },
 ]
+
+// ─── Default Costing Engine Rules ────────────────────────────────────────────
+// Each rule defines how panels and accessories are generated per category.
+// Panel rules: which panels to generate, quantity formula, material slot
+// Accessory rules: which accessories to auto-include, quantity formula
+export const DEFAULT_ENGINE_RULES = {
+  // --- Panel rules (shared across categories, can be overridden) ---
+  // Formula variables: W=width_cm, D=depth_cm, H=height_cm,
+  //   DOORS=doors_count, DRAWERS=drawers_count, SHELVES=shelves_count, SPACES=spaces_count
+  panelRules: [
+    { id:'side_panels',   label:'Side Panels',   qty:'2',             area:'H*D',       material_slot:'body', edge_formula:'2*H',      enabled:true,  note:'Two vertical side panels using body material' },
+    { id:'top_panel',     label:'Top Panel',     qty:'1',             area:'W*D',       material_slot:'body', edge_formula:'W',        enabled:true,  note:'Horizontal top panel' },
+    { id:'bottom_panel',  label:'Bottom Panel',  qty:'1',             area:'W*D',       material_slot:'body', edge_formula:'W',        enabled:true,  note:'Horizontal bottom panel' },
+    { id:'partitions',    label:'Partitions',    qty:'max(0,SPACES-1)',area:'H*D',      material_slot:'body', edge_formula:'qty*H',    enabled:true,  note:'Vertical internal dividers = spaces - 1' },
+    { id:'shelves',       label:'Shelves',       qty:'SHELVES',       area:'W*D',       material_slot:'body', edge_formula:'qty*W',    enabled:true,  note:'Horizontal interior shelves' },
+    { id:'doors',         label:'Doors',         qty:'DOORS',         area:'H*(W/DOORS)',material_slot:'door',edge_formula:'qty*2*(H+(W/DOORS))', enabled:true, condition:'DOORS>0 && DOOR_TYPE!="Open"', note:'Door panels only when door type is Hinged or Sliding' },
+    { id:'back_panel',    label:'Back Panel',    qty:'1',             area:'W*H',       material_slot:'back', edge_formula:'0',        enabled:true,  note:'Back panel uses back material, no edge banding' },
+  ],
+  // --- Accessory rules ---
+  // Condition variables same as panel rules plus DOOR_TYPE, HANDLE_TYPE, HAS_MIRROR
+  accessoryRules: [
+    { id:'hinges',        label:'Hinges',        acc_id:'HINGE_FULL', qty:'DOORS*3',    condition:'DOORS>0 && DOOR_TYPE=="Hinged"',   enabled:true,  note:'3 hinges per door, only for hinged doors' },
+    { id:'sliding_track', label:'Sliding Track', acc_id:'LATCH_SLIDE',qty:'DOORS',      condition:'DOORS>0 && DOOR_TYPE=="Sliding"',  enabled:true,  note:'One sliding rail per sliding door' },
+    { id:'drawer_slides', label:'Drawer Slides', acc_id:'auto_by_depth',qty:'DRAWERS',  condition:'DRAWERS>0',                        enabled:true,  note:'Auto-selects slide length by depth (≤32→30cm, ≤37→35cm, ≤42→40cm, ≤47→45cm, ≤52→50cm, else 55cm)' },
+    { id:'handles',       label:'Handles',       acc_id:'HANDLE_128', qty:'DOORS+DRAWERS', condition:'HANDLE_TYPE!="Handleless" && (DOORS+DRAWERS)>0', enabled:true, note:'One handle per door/drawer. Sliding doors use recessed handle (HANDLE_SLIDE20)' },
+    { id:'shelf_pins',    label:'Shelf Pins',    acc_id:'SHELF_SUPPORT',qty:'SHELVES*4',condition:'SHELVES>0',                        enabled:true,  note:'4 shelf support pins per shelf' },
+    { id:'mirror',        label:'Mirror',        acc_id:'MIRROR_M2',  qty:'area_based', condition:'HAS_MIRROR==true',                 enabled:true,  note:'Mirror area = (H × W/DOORS × mirror_count) m². Priced per m²' },
+    { id:'edge_banding',  label:'Edge Banding',  acc_id:'EDGE_STD',   qty:'total_perimeter_m', condition:'always',                  enabled:true,  note:'Sum of all panel edge formulas ÷ 100 = total meters. Uses EDGE_STD price per meter' },
+  ],
+  // --- Category material defaults (editable) ---
+  categoryDefaults: {
+    'Wardrobes':                  { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
+    'Dressings':                  { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
+    'Tv Unit':                    { body:'MDF_17_F2',  back:'MDF_4_BEIGE', door:'MDF_17_F2'  },
+    'Shoe Racks':                 { body:'CHIP_17_F2', back:'MDF_3.2_F1',  door:'CHIP_17_F2' },
+    'Commodes':                   { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
+    'Buffet':                     { body:'MDF_17_F2',  back:'MDF_4_BEIGE', door:'MDF_17_F2'  },
+    'Display Unit':               { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
+    'Unit Drawers':               { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
+    'Kitchen Storage Units':      { body:'MDF_17_F2',  back:'MDF_4_BEIGE', door:'MDF_17_F2'  },
+    'Bathroom Storage Units':     { body:'MDF_17_F2',  back:'MDF_4.2_F1',  door:'MDF_17_F2'  },
+    'File Cabinets & Bookcases':  { body:'CHIP_17_F2', back:'MDF_3.2_F1',  door:'CHIP_17_F2' },
+    'Office Wardrobes':           { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
+    'Coffee Corners':             { body:'MDF_17_F2',  back:'MDF_4_BEIGE', door:'MDF_17_F2'  },
+    'Other':                      { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
+  },
+}
