@@ -11,7 +11,7 @@
 function generatePanels(sku, matMap) {
   const { width_cm:w, depth_cm:d, height_cm:h, doors_count:dc, shelves_count:sc,
           partitions_count:pc, body_material_id:bm, back_material_id:bkm, door_material_id:dm,
-          door_type:dt } = sku
+          door_type:dt, has_back_panel:hbp } = sku
   const bodyMat = matMap[bm], backMat = matMap[bkm], doorMat = matMap[dm]
   if (!bodyMat) return { error: `Body material "${bm}" not found`, panels: [] }
   if (!backMat) return { error: `Back material "${bkm}" not found`, panels: [] }
@@ -27,11 +27,27 @@ function generatePanels(sku, matMap) {
   panels.push({ name:'Bottom Panel', qty:1, unit_area:w*d, total_area:w*d, mid:bm, mat:bodyMat, edge_cm:w })
   if (pc > 0) panels.push({ name:'Partitions', qty:pc, unit_area:h*d, total_area:pc*h*d, mid:bm, mat:bodyMat, edge_cm:pc*h })
   if (sc > 0) panels.push({ name:'Shelves', qty:sc, unit_area:w*d, total_area:sc*w*d, mid:bm, mat:bodyMat, edge_cm:sc*w })
+
+  // Drawer fronts — each drawer has a visible front panel
+  // Standard drawer front height ≈ 20 cm; width = cabinet width / spaces (or full width if 1 space)
+  if (sku.drawers_count > 0) {
+    const dfc = sku.drawers_count
+    const spaces = Math.max(sku.spaces_count || 1, 1)
+    const dfW = w / spaces        // drawer front width per space
+    const dfH = 20                // standard drawer front height (cm)
+    const dfArea = dfW * dfH
+    // Drawer fronts use door material (visible face), edge banded on all 4 sides
+    const dfMat = matMap[sku.door_material_id] || bodyMat
+    const dfMid = dfMat === bodyMat ? bm : sku.door_material_id
+    panels.push({ name:'Drawer Fronts', qty:dfc, unit_area:dfArea, total_area:dfc*dfArea, mid:dfMid, mat:dfMat, edge_cm:dfc*2*(dfH+dfW) })
+  }
   if (hasWoodDoors) {
     const dw = w/dc, da = h*dw
     panels.push({ name:'Doors', qty:dc, unit_area:da, total_area:dc*da, mid:dm, mat:doorMat, edge_cm:dc*2*(h+dw) })
   }
-  panels.push({ name:'Back Panel', qty:1, unit_area:w*h, total_area:w*h, mid:bkm, mat:backMat, edge_cm:0 })
+  if (hbp !== 'Open') {
+    panels.push({ name:'Back Panel', qty:1, unit_area:w*h, total_area:w*h, mid:bkm, mat:backMat, edge_cm:0 })
+  }
   return { error: null, panels }
 }
 
@@ -44,7 +60,7 @@ function groupAndConvert(panels, useGood) {
   })
   return Object.values(groups).map(g => {
     const sa = g.mat.sheet_width_cm * g.mat.sheet_height_cm
-    const sheets = Math.ceil(g.total_area / sa)
+    const sheets = Math.ceil(g.total_area * 1.10 / sa)  // +10% cutting waste (industry standard)
     const price = useGood ? (g.mat.price_good || g.mat.price) : g.mat.price
     return { ...g, sheet_area:sa, sheets, cost: sheets * price, price_used:price }
   })
@@ -67,14 +83,19 @@ function calcAccessories(sku, accList, useGood) {
   const items = []
   const gp = (id) => { const a = byId[id]; return a ? (useGood ? (a.price_good||a.price) : a.price) : 0 }
   const findSlide = () => {
-    if (d <= 32) return 'SLIDE_30'; if (d <= 37) return 'SLIDE_35'; if (d <= 42) return 'SLIDE_40'
-    if (d <= 47) return 'SLIDE_45'; if (d <= 52) return 'SLIDE_50'; return 'SLIDE_55'
+    // Drawer depth ≈ cabinet depth minus ~5cm clearance for back panel and face frame
+    const dd = d - 5
+    if (dd <= 32) return 'SLIDE_30'; if (dd <= 37) return 'SLIDE_35'; if (dd <= 42) return 'SLIDE_40'
+    if (dd <= 47) return 'SLIDE_45'; if (dd <= 52) return 'SLIDE_50'; return 'SLIDE_55'
   }
 
-  // 1. HINGES — only for Hinged doors (3 per door)
+  // 1. HINGES — only for Hinged doors; count by door height (industry standard)
+  //    ≤ 120cm: 2 hinges/door · 121–180cm: 3 hinges/door · > 180cm: 4 hinges/door
   if (dc > 0 && isHinged) {
-    const hid = 'HINGE_FULL', qty = dc * 3
-    items.push({ name: byId[hid]?.name||'Hinge', acc_id:hid, qty, unit_price:gp(hid), cost: qty*gp(hid) })
+    const hid = 'HINGE_FULL'
+    const hingesPerDoor = h <= 120 ? 2 : h <= 180 ? 3 : 4
+    const qty = dc * hingesPerDoor
+    items.push({ name: byId[hid]?.name||'Hinge', acc_id:hid, qty, unit_price:gp(hid), cost: qty*gp(hid), note:`${hingesPerDoor}/door (H=${h}cm)` })
   }
 
   // 2. SLIDING TRACK/LATCH — only for Sliding doors (1 track per door)
@@ -107,10 +128,19 @@ function calcAccessories(sku, accList, useGood) {
     items.push({ name:'Shelf Supports', acc_id:'SHELF_SUPPORT', qty, unit_price:gp('SHELF_SUPPORT'), cost: qty*gp('SHELF_SUPPORT') })
   }
 
-  // 6. MIRROR — area-based (Has Mirror=YES, Mirror Count)
+  // 6. HANGER RAIL — 1 rail per hanger (clothes hanging rod inside wardrobe)
+  const hangerCount = Number(sku.hangers_count) || 0
+  if (hangerCount > 0) {
+    // Hanger rod: use HANDLE_W100 as proxy (aluminium rod ~100cm) or a dedicated acc if available
+    const hrodId = byId['HANGER_ROD'] ? 'HANGER_ROD' : 'HANDLE_W100'
+    items.push({ name: byId[hrodId]?.name||'Hanger Rail', acc_id:hrodId, qty:hangerCount, unit_price:gp(hrodId), cost: hangerCount*gp(hrodId) })
+  }
+
+  // 7. MIRROR — area-based (Has Mirror=YES, Mirror Count)
   //    Mirror is a flat sheet glued to a door or wall, priced per m²
   if (mir) {
-    const mc = Number(mirC) || dc || 1
+    // Cap mirror count to door count — a mirror can only be on a door face
+    const mc = Math.min(Number(mirC) || dc || 1, dc || 1)
     const mirrorW = dc > 0 ? w / dc : w
     const area = (h * mirrorW * mc) / 10000
     items.push({ name:'Mirror', acc_id:'MIRROR_M2', qty:mc, area_m2:area, unit_price:gp('MIRROR_M2'), cost: area*gp('MIRROR_M2') })
@@ -132,6 +162,8 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
     has_sliding_system: Boolean(sku.has_sliding_system), has_mirror: Boolean(sku.has_mirror),
     mirror_count: Number(sku.mirror_count)||0, handle_type: sku.handle_type || 'Normal',
     door_type: sku.door_type || 'Hinged',
+    has_back_panel: sku.has_back_panel || 'Close',
+    hangers_count: Number(sku.hangers_count)||0,
     body_material_id: sku.body_material_id||'MDF_17_F2', back_material_id: sku.back_material_id||'MDF_3.2_F1',
     door_material_id: sku.door_material_id||'MDF_17_F2', selling_price: Number(sku.selling_price)||0,
   }
@@ -229,6 +261,8 @@ export function skuToEngineInput(row) {
     door_type: row.door_type||'Hinged',
     body_material_id:row.body_material_id||'MDF_17_F2',
     back_material_id:row.back_material_id||'MDF_3.2_F1', door_material_id:row.door_material_id||'MDF_17_F2',
+    has_back_panel: row.has_back_panel || 'Close',
+    hangers_count: row.hangers_count || 0,
     selling_price:row.selling_price,
   }
 }

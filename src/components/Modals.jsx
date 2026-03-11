@@ -5,6 +5,48 @@ import { Icon, Btn, Modal, StatCard, Toggle } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
 const lSt=()=>({fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase',display:'block',marginBottom:6,lineHeight:1.4})
+
+// Commercial breakdown helpers
+function Row({ label, value, bold, dim, accent }) {
+  return (
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:7}}>
+      <span style={{fontSize:13,color:dim?COLORS.textMuted:COLORS.textDim,fontWeight:bold?700:400}}>{label}</span>
+      <span style={{fontSize:13,fontWeight:bold?700:600,color:accent?COLORS.accent:dim?COLORS.textMuted:COLORS.text}}>{value}</span>
+    </div>
+  )
+}
+function Divider({ color }) {
+  return <div style={{height:1,background:color||COLORS.border,margin:'8px 0 10px'}}/>
+}
+
+function CopyBadge({ text }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <span
+      onClick={e => { e.stopPropagation(); handleCopy() }}
+      title="Click to copy SKU code"
+      style={{
+        display:'inline-flex', alignItems:'center', gap:4,
+        cursor:'pointer', fontFamily:'monospace', fontSize:12,
+        fontWeight:700, letterSpacing:'0.03em',
+        color: copied ? COLORS.green : COLORS.accent,
+        background: copied ? COLORS.green+'18' : COLORS.accent+'18',
+        border: `1px solid ${copied ? COLORS.green+'44' : COLORS.accent+'44'}`,
+        borderRadius:6, padding:'2px 8px',
+        transition:'all 0.2s', userSelect:'none',
+      }}
+    >
+      {copied ? '✓ Copied' : text}
+      {!copied && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>}
+    </span>
+  )
+}
 const selSt=()=>({...iSt(),cursor:'pointer',width:'auto',minWidth:120,padding:'4px 8px',fontSize:12})
 
 export function SKUDetailModal({ sku, materials, accessories, commercial, onClose, onEdit, onCalc, onSaveSku }) {
@@ -38,7 +80,7 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
             <div style={{fontSize:11,fontWeight:700,color:COLORS.accent,letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:4}}>Cost Report</div>
             <h3 style={{fontSize:18,fontWeight:800,color:COLORS.text}}>{sku.name||sku.sku_code}</h3>
             <div style={{fontSize:12,color:COLORS.textMuted,marginTop:4,lineHeight:1.6}}>
-              {sku.sku_code} · {sku.sub_category} · {sku.width_cm}×{sku.depth_cm}×{sku.height_cm} cm
+              <CopyBadge text={sku.sku_code}/><span style={{color:COLORS.textMuted}}> · {sku.sub_category} · {sku.width_cm}×{sku.depth_cm}×{sku.height_cm} cm</span>
               {sku.doors_count>0&&` · ${sku.doors_count} ${sku.door_type} doors`}
               {sku.spaces_count>0&&` · ${sku.spaces_count} spaces`}
               {cost.derived_partitions>0&&` · ${cost.derived_partitions} partitions`}
@@ -107,43 +149,71 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
       </div>
 
       <div>
-        <div style={{...lSt(),marginBottom:10}}>Commercial Analysis</div>
-        <div style={{background:COLORS.bg,borderRadius:10,padding:16}}>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.text,fontWeight:700}}>COGS</span><span style={{color:COLORS.text,fontWeight:700}}>{fmt(cost.cogs)} EGP</span></div>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ Overhead ({(cost.overhead_percent*100).toFixed(0)}%)</span><span style={{color:COLORS.textDim,fontWeight:600}}>{fmt(cost.overhead_amount)} EGP</span></div>
-          <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:10,fontSize:14}}><span style={{color:COLORS.text,fontWeight:800}}>Production Cost</span><span style={{color:COLORS.accent,fontWeight:800}}>{fmt(cost.production_cost)} EGP</span></div>
+        <div style={{...lSt(),marginBottom:12}}>Commercial Analysis</div>
+
+        {/* ── Block 1: Cost Breakdown ── */}
+        <div style={{background:COLORS.bg,borderRadius:10,padding:'14px 16px',marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.07em',textTransform:'uppercase',marginBottom:10}}>Cost Breakdown</div>
+          <Row label="COGS" value={fmt(cost.cogs)+' EGP'} bold/>
+          <Row label={`+ Overhead (${(cost.overhead_percent*100).toFixed(0)}%)`} value={fmt(cost.overhead_amount)+' EGP'} dim/>
+          <Divider/>
+          <Row label="Production Cost" value={fmt(cost.production_cost)+' EGP'} bold accent/>
           {cost.commercial&&<>
-            <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ Seller Margin ({((commercial.seller_margin_percent||0)*100).toFixed(0)}% of Prod. Cost)</span><span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.seller_margin)} EGP</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12,paddingLeft:12}}><span style={{color:COLORS.textMuted,fontStyle:'italic'}}>Subtotal</span><span style={{color:COLORS.textMuted,fontWeight:600}}>{fmt(cost.commercial.subtotal_after_seller)} EGP</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ VAT ({((commercial.vat_percent||0)*100).toFixed(0)}% of above)</span><span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.vat)} EGP</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12,paddingLeft:12}}><span style={{color:COLORS.textMuted,fontStyle:'italic'}}>Subtotal after VAT</span><span style={{color:COLORS.textMuted,fontWeight:600}}>{fmt(cost.commercial.subtotal_after_vat)} EGP</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ Homzmart Commission ({((commercial.homzmart_margin_percent||commercial.commission_percent||0)*100).toFixed(0)}% of Selling Price)</span><span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.homzmart_margin)} EGP</span></div>
-            <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.text,fontWeight:600}}>Current Selling Price</span><span style={{color:COLORS.text,fontWeight:700}}>{fmt(cost.commercial.selling_price)} EGP</span></div>
-            <div style={{height:2,background:mc,margin:'10px 0',borderRadius:1}}/>
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:16,fontWeight:800}}><span style={{color:COLORS.text}}>Net Profit</span><span style={{color:mc}}>{fmt(cost.commercial.net_profit)} EGP ({fmtP(m)})</span></div>
+            <Row label={`+ Seller Margin (${((commercial.seller_margin_percent||0)*100).toFixed(0)}% of Prod. Cost)`} value={fmt(cost.commercial.seller_margin)+' EGP'} dim/>
+            <Row label={`+ VAT (${((commercial.vat_percent||0)*100).toFixed(0)}% of above)`} value={fmt(cost.commercial.vat)+' EGP'} dim/>
+            <Divider/>
+            <Row label="Total Cost to Cover" value={fmt(cost.commercial.subtotal_after_vat)+' EGP'} bold/>
           </>}
-          {(()=>{const rec=cost.recommended_selling_price;const cur=cost.commercial?.selling_price||0;const variance=cur>0?cur-rec:null;const isPos=variance>0;return(
-          <div style={{marginTop:16,borderRadius:10,overflow:'hidden',border:`1px solid ${COLORS.border}`}}>
-            <div style={{padding:'12px 14px',background:COLORS.accent+'12',borderBottom:`1px solid ${COLORS.border}`}}>
-              <div style={{fontSize:11,fontWeight:700,color:COLORS.accent,letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:4}}>Recommended Selling Price</div>
-              <div style={{fontSize:22,fontWeight:900,color:COLORS.accent}}>{fmt(rec)} EGP</div>
-              <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>Break-even: covers COGS + Overhead + Seller Margin + VAT + Homzmart</div>
-            </div>
-            {variance!==null&&<div style={{padding:'10px 14px',background:isPos?COLORS.green+'10':COLORS.red+'10',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontSize:11,fontWeight:700,color:isPos?COLORS.green:COLORS.red,letterSpacing:'0.04em',textTransform:'uppercase'}}>{isPos?'Room to reduce price':'Price needs to increase'}</div>
-                <div style={{fontSize:11,color:COLORS.textMuted,marginTop:2}}>{isPos?'Current price is above recommended — you can reduce and stay profitable':'Current price is below recommended — you are losing money'}</div>
-              </div>
-              <div style={{textAlign:'right',flexShrink:0,marginLeft:12}}>
-                <div style={{fontSize:18,fontWeight:900,color:isPos?COLORS.green:COLORS.red}}>{isPos?'+':''}{fmt(variance)} EGP</div>
-                <div style={{fontSize:11,color:isPos?COLORS.green:COLORS.red,fontWeight:600}}>{isPos?'+':''}{((variance/rec)*100).toFixed(1)}% vs rec.</div>
-              </div>
-            </div>}
-          </div>)})()}
         </div>
+
+        {/* ── Block 2: Recommended Price ── */}
+        <div style={{background:COLORS.accent+'12',border:`1px solid ${COLORS.accent}30`,borderRadius:10,padding:'14px 16px',marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:COLORS.accent,letterSpacing:'0.07em',textTransform:'uppercase',marginBottom:10}}>Recommended Selling Price</div>
+          {cost.commercial&&<>
+            <Row label={`Homzmart Commission (${((commercial.homzmart_margin_percent||commercial.commission_percent||0)*100).toFixed(0)}% of selling price)`} value={fmt(cost.recommended_selling_price*(commercial.homzmart_margin_percent||0))+' EGP'} dim/>
+            <Divider color={COLORS.accent+'30'}/>
+          </>}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+            <span style={{fontSize:15,fontWeight:800,color:COLORS.accent}}>Recommended Price</span>
+            <span style={{fontSize:22,fontWeight:900,color:COLORS.accent}}>{fmt(cost.recommended_selling_price)} EGP</span>
+          </div>
+          <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>Minimum price to break even after all costs and commissions</div>
+        </div>
+
+        {/* ── Block 3: Current Price & Verdict ── */}
+        {cost.commercial&&(()=>{
+          const rec=cost.recommended_selling_price
+          const cur=cost.commercial.selling_price
+          const variance=cur-rec
+          const isPos=variance>=0
+          const pct=((variance/rec)*100).toFixed(1)
+          return (
+            <div style={{border:`1px solid ${isPos?COLORS.green+'40':COLORS.red+'40'}`,borderRadius:10,overflow:'hidden'}}>
+              <div style={{background:COLORS.bg,padding:'14px 16px'}}>
+                <div style={{fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.07em',textTransform:'uppercase',marginBottom:10}}>Current Price</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
+                  <span style={{fontSize:13,color:COLORS.textDim}}>Recommended</span>
+                  <span style={{fontSize:13,fontWeight:600,color:COLORS.textDim}}>{fmt(rec)} EGP</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+                  <span style={{fontSize:14,fontWeight:700,color:COLORS.text}}>Current Selling Price</span>
+                  <span style={{fontSize:18,fontWeight:900,color:COLORS.text}}>{fmt(cur)} EGP</span>
+                </div>
+              </div>
+              <div style={{background:isPos?COLORS.green+'15':COLORS.red+'15',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:`1px solid ${isPos?COLORS.green+'30':COLORS.red+'30'}`}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:800,color:isPos?COLORS.green:COLORS.red}}>{isPos?'✓ Room to reduce price':'✗ Price needs to increase'}</div>
+                  <div style={{fontSize:11,color:COLORS.textMuted,marginTop:2}}>{isPos?'You can lower the price and remain profitable':'Selling below break-even — raising price recommended'}</div>
+                </div>
+                <div style={{textAlign:'right',flexShrink:0,marginLeft:16}}>
+                  <div style={{fontSize:20,fontWeight:900,color:isPos?COLORS.green:COLORS.red}}>{isPos?'+':''}{fmt(variance)} EGP</div>
+                  <div style={{fontSize:11,fontWeight:700,color:isPos?COLORS.green:COLORS.red}}>{isPos?'+':''}{pct}% vs rec.</div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
       </div>
       <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:20}}>
         <Btn variant="secondary" size="sm" onClick={onEdit}><Icon name="edit" size={14}/> Edit</Btn>

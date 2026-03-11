@@ -3,220 +3,96 @@ import { COLORS, CATEGORIES } from '../lib/constants'
 import { Icon, Btn, Card } from '../components/UI'
 
 const SLOT_META = {
-  body: { color: '#4F8EF7', label: 'Body', desc: 'Main structure' },
-  door: { color: '#A78BFA', label: 'Door', desc: 'Door panels' },
-  back: { color: '#14B8A6', label: 'Back', desc: 'Back panel' },
+  body: { color: '#4F8EF7', label: 'Body Material' },
+  door: { color: '#A78BFA', label: 'Door Material' },
+  back: { color: '#14B8A6', label: 'Back Material' },
 }
 
-const pill = (color, text) => (
-  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 9px', borderRadius:20, fontSize:11, fontWeight:700, background:color+'20', color, letterSpacing:'0.02em' }}>{text}</span>
+const tag = (color, text) => (
+  <span style={{ display:'inline-flex', alignItems:'center', padding:'2px 8px', borderRadius:20, fontSize:11, fontWeight:700, background:color+'20', color, letterSpacing:'0.02em', whiteSpace:'nowrap' }}>{text}</span>
 )
 
-function FormulaTag({ value, placeholder }) {
-  if (!value) return <span style={{ color:COLORS.textMuted, fontSize:12, fontStyle:'italic' }}>{placeholder||'—'}</span>
-  return (
-    <code style={{ fontSize:11, fontFamily:'DM Mono,monospace', background:COLORS.bg, color:COLORS.amber, padding:'2px 7px', borderRadius:5, border:`1px solid ${COLORS.border}` }}>
-      {value}
-    </code>
-  )
-}
+// ── Panel Logic Reference ────────────────────────────────────────────────────
+const PANEL_LOGIC = [
+  { name:'Side Panels', qty:'2', material:'Body', area:'Height × Depth', edge:'2 × Height (front edges)', note:'Two vertical side panels. Front edge of each side is banded.' },
+  { name:'Top Panel', qty:'1', material:'Body', area:'Width × Depth', edge:'Width (front edge only)', note:'Horizontal top panel. Only the front edge is visible and banded.' },
+  { name:'Bottom Panel', qty:'1', material:'Body', area:'Width × Depth', edge:'Width (front edge only)', note:'Horizontal bottom panel. Same logic as top panel.' },
+  { name:'Partitions', qty:'Spaces − 1', material:'Body', area:'Height × Depth', edge:'Qty × Height (front edges)', note:'Vertical dividers between spaces. A 2-space cabinet has 1 partition; 3 spaces → 2 partitions, etc.' },
+  { name:'Shelves', qty:'# Shelves', material:'Body', area:'Width × Depth', edge:'Qty × Width (front edges)', note:'Horizontal interior shelves. Only the front edge is banded.' },
+  { name:'Drawer Fronts', qty:'# Drawers', material:'Door', area:'(Width ÷ Spaces) × 20 cm', edge:'All 4 edges per front', note:'Visible drawer face panels. Height estimated at 20 cm standard; width = cabinet width divided by number of spaces.' },
+  { name:'Door Panels', qty:'# Doors', material:'Door', area:'Height × (Width ÷ Doors)', edge:'Full perimeter per door', note:'Only for Hinged or Sliding types. Open wardrobes have no door panels. Each door spans the full height and its share of the width.' },
+  { name:'Back Panel', qty:'1', material:'Back', area:'Width × Height', edge:'None (hidden)', note:'Only added when "Has Back Panel = Close". Open-back units skip this panel entirely.' },
+]
 
-function FieldRow({ label, hint, children }) {
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-      <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
-        <label style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, letterSpacing:'0.07em', textTransform:'uppercase' }}>{label}</label>
-        {hint && <span style={{ fontSize:11, color:COLORS.textMuted, fontStyle:'italic' }}>{hint}</span>}
-      </div>
-      {children}
-    </div>
-  )
-}
+// ── Accessory Logic Reference ────────────────────────────────────────────────
+const ACC_LOGIC = [
+  { name:'Hinges', acc:'HINGE_FULL', qty:'Doors × (2, 3, or 4)', condition:'Hinged doors only', note:'Count scales with door height: ≤120 cm → 2/door · 121–180 cm → 3/door · >180 cm → 4/door. Industry standard (Blum / Grass sizing).' },
+  { name:'Sliding Track', acc:'LATCH_SLIDE', qty:'1 per door', condition:'Sliding doors only', note:'One sliding rail/latch set per sliding door leaf (مجرى لطش). Hinged and open cabinets do not get this.' },
+  { name:'Drawer Slides', acc:'SLIDE_30–55', qty:'1 pair per drawer', condition:'Any drawer', note:'Pair selection by depth: drawer depth = cabinet depth − 5 cm clearance. Then: ≤32→30cm, ≤37→35cm, ≤42→40cm, ≤47→45cm, ≤52→50cm, else 55cm.' },
+  { name:'Handles', acc:'HANDLE_128 / HANDLE_SLIDE20', qty:'1 per door + 1 per drawer', condition:'Handle Type ≠ Handleless', note:'Hinged/Open doors and drawers use 128mm handle. Sliding doors use recessed 20 cm pull. Handleless = zero handles.' },
+  { name:'Shelf Pins', acc:'SHELF_SUPPORT', qty:'4 per shelf', condition:'Any shelf', note:'4 shelf support pins per shelf (2 per side). Standard for adjustable shelves.' },
+  { name:'Hanger Rod', acc:'HANGER_ROD', qty:'1 per hanger space', condition:'# Hangers > 0', note:'One hanging rod per hanger compartment. Standard 100 cm rod, cut to fit.' },
+  { name:'Mirror', acc:'MIRROR_M2', qty:'Area in m²', condition:'Has Mirror = YES', note:'Area = Height × (Width ÷ Doors) × mirror count, capped at door count. Priced per m².' },
+  { name:'Edge Banding', acc:'EDGE_STD', qty:'Total perimeter meters', condition:'Always', note:'Sum of all panel edge formulas ÷ 100 = total meters. Priced per linear meter.' },
+]
 
-const inputSt = (mono) => ({
-  width:'100%', background:COLORS.inputBg, border:`1px solid ${COLORS.border}`,
-  borderRadius:7, padding:'8px 11px', color:COLORS.text, fontSize: mono ? 12 : 13,
-  fontFamily: mono ? 'DM Mono,monospace' : 'inherit', outline:'none', lineHeight:1.5,
-  boxSizing:'border-box',
-})
+// ── Commercial Logic Reference ───────────────────────────────────────────────
+const COMMERCIAL_STEPS = [
+  { step:1, label:'COGS', formula:'Materials + Edge Banding + Accessories', color:COLORS.textDim, note:'Raw cost of all cut panels, hardware, and edge banding.' },
+  { step:2, label:'+ Overhead', formula:'COGS × Overhead %', color:COLORS.amber, note:'Factory overhead: labour, utilities, machine time. Applied as % of COGS.' },
+  { step:3, label:'= Production Cost', formula:'COGS + Overhead', color:COLORS.accent, bold:true, note:'Total cost to produce the unit. This is your floor price before any margins.' },
+  { step:4, label:'+ Seller Markup', formula:'Production Cost × Seller Markup %', color:COLORS.orange, note:'Seller\'s profit margin added on top of production cost.' },
+  { step:5, label:'+ VAT', formula:'(Production Cost + Seller Markup) × VAT %', color:COLORS.red, note:'Egyptian VAT (14%) applied to the seller subtotal for B2B invoicing.' },
+  { step:6, label:'= Pre-commission Subtotal', formula:'After seller markup and VAT', color:COLORS.textDim, note:'What the seller "receives" before Homzmart takes its cut.' },
+  { step:7, label:'Homzmart Commission', formula:'Final Selling Price × Commission %', color:COLORS.red, note:'Commission is on the FINAL selling price (not cost). So recommended price = subtotal ÷ (1 − commission%).' },
+  { step:8, label:'= Recommended Price', formula:'Subtotal ÷ (1 − Commission %)', color:COLORS.green, bold:true, note:'Break-even price. Selling at this price covers all costs, markup, VAT, and Homzmart commission exactly.' },
+]
 
-const selectSt = () => ({
-  ...inputSt(),
-  cursor:'pointer', appearance:'none',
-  backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat:'no-repeat', backgroundPosition:'right 10px center', paddingRight:30,
-})
-
-function VarsReference() {
+function PanelRow({ p }) {
   const [open, setOpen] = useState(false)
   return (
-    <div style={{ border:`1px solid ${COLORS.border}`, borderRadius:10, marginBottom:16, overflow:'hidden' }}>
-      <div onClick={()=>setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 14px', background:COLORS.surface, cursor:'pointer', userSelect:'none' }}>
-        <span style={{ fontSize:12, fontWeight:700, color:COLORS.textMuted, letterSpacing:'0.04em' }}>📐 Formula variables reference</span>
-        <div style={{ color:COLORS.textMuted, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none' }}>
+    <div style={{ borderBottom:`1px solid ${COLORS.border}` }}>
+      <div onClick={()=>setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', cursor:'pointer', userSelect:'none' }}>
+        <div style={{ width:8, height:8, borderRadius:'50%', background:COLORS.accent, flexShrink:0 }}/>
+        <span style={{ fontWeight:600, fontSize:13, color:COLORS.text, flex:1, minWidth:130 }}>{p.name}</span>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', flex:2 }}>
+          <span style={{ fontSize:12, color:COLORS.textMuted }}>Qty: <strong style={{color:COLORS.text}}>{p.qty}</strong></span>
+          <span style={{ fontSize:12, color:COLORS.textMuted }}>Area: <strong style={{color:COLORS.text}}>{p.area}</strong></span>
+          <span style={{ fontSize:12, color:COLORS.textMuted }}>Edge: <strong style={{color:COLORS.text}}>{p.edge}</strong></span>
+        </div>
+        {tag(SLOT_META[p.material?.toLowerCase()]?.color || COLORS.accent, p.material)}
+        <div style={{ color:COLORS.textMuted, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none', flexShrink:0 }}>
           <Icon name="arrowDown" size={13}/>
         </div>
       </div>
       {open && (
-        <div style={{ padding:'12px 14px', background:COLORS.bg, borderTop:`1px solid ${COLORS.border}` }}>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
-            {[
-              ['W','Width cm'],['D','Depth cm'],['H','Height cm'],
-              ['DOORS','# Doors'],['DRAWERS','# Drawers'],['SHELVES','# Shelves'],
-              ['SPACES','# Spaces'],['qty','This rule qty (edge only)'],
-              ['DOOR_TYPE','"Hinged"/"Sliding"/"Open"'],['HANDLE_TYPE','"Normal"/"Handleless"'],['HAS_MIRROR','true/false'],
-            ].map(([v,d]) => (
-              <div key={v} style={{ display:'flex', alignItems:'center', gap:5, background:COLORS.surface, border:`1px solid ${COLORS.border}`, borderRadius:6, padding:'3px 8px' }}>
-                <code style={{ fontFamily:'DM Mono,monospace', fontSize:11, color:COLORS.amber, fontWeight:700 }}>{v}</code>
-                <span style={{ fontSize:11, color:COLORS.textMuted }}>{d}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize:11, color:COLORS.textMuted }}>
-            Supports: <code style={{fontFamily:'monospace'}}>+ - * /</code> · comparisons <code style={{fontFamily:'monospace'}}>&gt; &lt; == !=</code> · logic <code style={{fontFamily:'monospace'}}>&amp;&amp; ||</code> · <code style={{fontFamily:'monospace'}}>max(a,b)</code>
-          </div>
+        <div style={{ padding:'0 16px 14px 36px', fontSize:12, color:COLORS.textMuted, lineHeight:1.7, borderTop:`1px solid ${COLORS.border}44` }}>
+          {p.note}
         </div>
       )}
     </div>
   )
 }
 
-function PanelRuleCard({ rule, onChange, onDelete }) {
+function AccRow({ a }) {
   const [open, setOpen] = useState(false)
-  const slot = SLOT_META[rule.material_slot] || { color:COLORS.textMuted, label:rule.material_slot }
-
   return (
-    <div style={{ border:`1px solid ${open ? slot.color+'60' : COLORS.border}`, borderRadius:12, marginBottom:8, overflow:'hidden', transition:'border-color 0.2s', opacity:rule.enabled?1:0.55 }}>
-      <div onClick={()=>setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 16px', background:COLORS.surface, cursor:'pointer', userSelect:'none' }}>
-        <input type="checkbox" checked={rule.enabled} onClick={e=>e.stopPropagation()} onChange={e=>onChange({...rule,enabled:e.target.checked})} style={{ width:15,height:15,cursor:'pointer',accentColor:COLORS.accent,flexShrink:0 }}/>
-        <span style={{ fontWeight:600, fontSize:13, color:COLORS.text, flex:1 }}>{rule.label||'Unnamed Panel'}</span>
-        <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-          {pill(slot.color, slot.label)}
-          <span style={{ fontSize:11, color:COLORS.textMuted }}>qty</span>
-          <FormulaTag value={rule.qty}/>
-          <span style={{ fontSize:11, color:COLORS.textMuted }}>area</span>
-          <FormulaTag value={rule.area}/>
+    <div style={{ borderBottom:`1px solid ${COLORS.border}` }}>
+      <div onClick={()=>setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', cursor:'pointer', userSelect:'none' }}>
+        <div style={{ width:8, height:8, borderRadius:'50%', background:COLORS.purple, flexShrink:0 }}/>
+        <span style={{ fontWeight:600, fontSize:13, color:COLORS.text, flex:1, minWidth:130 }}>{a.name}</span>
+        <div style={{ display:'flex', gap:8, flex:2, flexWrap:'wrap' }}>
+          <span style={{ fontSize:12, color:COLORS.textMuted }}>Qty: <strong style={{color:COLORS.text}}>{a.qty}</strong></span>
+          <span style={{ fontSize:12, color:COLORS.textMuted }}>When: <strong style={{color:COLORS.text}}>{a.condition}</strong></span>
         </div>
-        <div style={{ color:COLORS.textMuted, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none' }}>
-          <Icon name="arrowDown" size={14}/>
+        {tag(COLORS.purple, a.acc)}
+        <div style={{ color:COLORS.textMuted, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none', flexShrink:0 }}>
+          <Icon name="arrowDown" size={13}/>
         </div>
       </div>
-
       {open && (
-        <div style={{ padding:'16px', borderTop:`1px solid ${COLORS.border}`, background:COLORS.bg, display:'flex', flexDirection:'column', gap:14 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:12 }}>
-            <FieldRow label="Panel Name" hint="e.g. Side Panels">
-              <input value={rule.label} onChange={e=>onChange({...rule,label:e.target.value})} style={inputSt()}/>
-            </FieldRow>
-            <FieldRow label="Material">
-              <select value={rule.material_slot} onChange={e=>onChange({...rule,material_slot:e.target.value})} style={selectSt()}>
-                <option value="body">Body — main structure</option>
-                <option value="door">Door — door panels</option>
-                <option value="back">Back — back panel</option>
-              </select>
-            </FieldRow>
-          </div>
-
-          <div style={{ background:COLORS.surface, borderRadius:10, padding:'14px', border:`1px solid ${COLORS.border}` }}>
-            <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:10 }}>Calculation formulas</div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-              <FieldRow label="Quantity" hint="how many pieces">
-                <input value={rule.qty} onChange={e=>onChange({...rule,qty:e.target.value})} style={inputSt(true)} placeholder="e.g. 2 or SHELVES"/>
-              </FieldRow>
-              <FieldRow label="Area (cm²)" hint="per piece">
-                <input value={rule.area} onChange={e=>onChange({...rule,area:e.target.value})} style={inputSt(true)} placeholder="e.g. H*D or W*D"/>
-              </FieldRow>
-              <FieldRow label="Edge banding (cm)" hint="total for all pieces">
-                <input value={rule.edge_formula} onChange={e=>onChange({...rule,edge_formula:e.target.value})} style={inputSt(true)} placeholder="e.g. 2*H or qty*W"/>
-              </FieldRow>
-            </div>
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <FieldRow label="Condition" hint="leave blank to always apply">
-              <input value={rule.condition||''} onChange={e=>onChange({...rule,condition:e.target.value})} style={inputSt(true)} placeholder='e.g. DOORS>0 && DOOR_TYPE!="Open"'/>
-            </FieldRow>
-            <FieldRow label="Notes" hint="optional">
-              <input value={rule.note||''} onChange={e=>onChange({...rule,note:e.target.value})} style={inputSt()} placeholder="e.g. Two vertical side panels"/>
-            </FieldRow>
-          </div>
-
-          <div style={{ display:'flex', justifyContent:'flex-end' }}>
-            <button onClick={onDelete} style={{ background:'none', border:`1px solid ${COLORS.red}40`, borderRadius:7, padding:'5px 12px', cursor:'pointer', color:COLORS.red, fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:6, fontFamily:'inherit' }}>
-              <Icon name="trash" size={12}/> Delete Rule
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-const SPECIAL_ACC = {
-  'auto_by_depth':     { label:'Auto Drawer Slides', desc:'Picks slide length by depth', color:'#F59E0B' },
-  'area_based':        { label:'Mirror (area m²)',   desc:'H × (W/DOORS) × mirror_count', color:'#14B8A6' },
-  'total_perimeter_m': { label:'Edge Banding',       desc:'Sum of all panel edge formulas', color:'#A78BFA' },
-}
-
-function AccRuleCard({ rule, accessories, onChange, onDelete }) {
-  const [open, setOpen] = useState(false)
-  const accOptions = accessories.map(a => ({ value:a.acc_id, label:a.name }))
-  const special = SPECIAL_ACC[rule.acc_id]
-  const matchedAcc = accessories.find(a => a.acc_id === rule.acc_id)
-  const accLabel = special?.label || matchedAcc?.name || rule.acc_id || '—'
-  const accColor = special?.color || COLORS.purple
-
-  return (
-    <div style={{ border:`1px solid ${open ? accColor+'60' : COLORS.border}`, borderRadius:12, marginBottom:8, overflow:'hidden', opacity:rule.enabled?1:0.55, transition:'border-color 0.2s' }}>
-      <div onClick={()=>setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 16px', background:COLORS.surface, cursor:'pointer', userSelect:'none' }}>
-        <input type="checkbox" checked={rule.enabled} onClick={e=>e.stopPropagation()} onChange={e=>onChange({...rule,enabled:e.target.checked})} style={{ width:15,height:15,cursor:'pointer',accentColor:COLORS.accent,flexShrink:0 }}/>
-        <span style={{ fontWeight:600, fontSize:13, color:COLORS.text, flex:1 }}>{rule.label||'Unnamed Accessory'}</span>
-        <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-          {pill(accColor, accLabel)}
-          <span style={{ fontSize:11, color:COLORS.textMuted }}>qty</span>
-          <FormulaTag value={rule.qty}/>
-          {rule.condition && <FormulaTag value={'if: '+rule.condition.slice(0,28)+(rule.condition.length>28?'…':'')}/>}
-        </div>
-        <div style={{ color:COLORS.textMuted, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none' }}>
-          <Icon name="arrowDown" size={14}/>
-        </div>
-      </div>
-
-      {open && (
-        <div style={{ padding:'16px', borderTop:`1px solid ${COLORS.border}`, background:COLORS.bg, display:'flex', flexDirection:'column', gap:14 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'2fr 2fr', gap:12 }}>
-            <FieldRow label="Rule Name">
-              <input value={rule.label} onChange={e=>onChange({...rule,label:e.target.value})} style={inputSt()}/>
-            </FieldRow>
-            <FieldRow label="Accessory">
-              <select value={rule.acc_id} onChange={e=>onChange({...rule,acc_id:e.target.value})} style={selectSt()}>
-                <optgroup label="Smart / Auto calculated">
-                  <option value="auto_by_depth">Auto Drawer Slides — picks length by depth</option>
-                  <option value="area_based">Mirror — area based (m²)</option>
-                  <option value="total_perimeter_m">Edge Banding — total perimeter</option>
-                </optgroup>
-                <optgroup label="From Pricing Config">
-                  {accOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                </optgroup>
-              </select>
-            </FieldRow>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <FieldRow label="Quantity Formula" hint="e.g. DOORS*3">
-              <input value={rule.qty} onChange={e=>onChange({...rule,qty:e.target.value})} style={inputSt(true)} placeholder="e.g. DOORS*3 or SHELVES*4"/>
-            </FieldRow>
-            <FieldRow label="Condition" hint="leave blank to always apply">
-              <input value={rule.condition||''} onChange={e=>onChange({...rule,condition:e.target.value})} style={inputSt(true)} placeholder='e.g. DOORS>0 && DOOR_TYPE=="Hinged"'/>
-            </FieldRow>
-          </div>
-          <FieldRow label="Notes" hint="optional">
-            <input value={rule.note||''} onChange={e=>onChange({...rule,note:e.target.value})} style={inputSt()} placeholder="Optional description for your team"/>
-          </FieldRow>
-          <div style={{ display:'flex', justifyContent:'flex-end' }}>
-            <button onClick={onDelete} style={{ background:'none', border:`1px solid ${COLORS.red}40`, borderRadius:7, padding:'5px 12px', cursor:'pointer', color:COLORS.red, fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:6, fontFamily:'inherit' }}>
-              <Icon name="trash" size={12}/> Delete Rule
-            </button>
-          </div>
+        <div style={{ padding:'0 16px 14px 36px', fontSize:12, color:COLORS.textMuted, lineHeight:1.7, borderTop:`1px solid ${COLORS.border}44` }}>
+          {a.note}
         </div>
       )}
     </div>
@@ -232,7 +108,6 @@ function CategoryDefaultsTable({ categoryDefaults, materials, onChange }) {
     backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
     backgroundRepeat:'no-repeat', backgroundPosition:'right 8px center',
   }
-
   return (
     <Card style={{ padding:0, overflow:'hidden' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
@@ -241,7 +116,7 @@ function CategoryDefaultsTable({ categoryDefaults, materials, onChange }) {
             <th style={{ padding:'10px 16px', textAlign:'left', fontSize:11, fontWeight:700, color:COLORS.textMuted, letterSpacing:'0.06em', textTransform:'uppercase' }}>Category</th>
             {['body','back','door'].map(s => (
               <th key={s} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color:SLOT_META[s].color }}>
-                {SLOT_META[s].label} <span style={{ color:COLORS.textMuted, fontWeight:400 }}>— {SLOT_META[s].desc}</span>
+                {SLOT_META[s].label}
               </th>
             ))}
           </tr>
@@ -269,7 +144,7 @@ function CategoryDefaultsTable({ categoryDefaults, materials, onChange }) {
 }
 
 export default function EnginePage({ engineRules, setEngineRules, materials, accessories, toast }) {
-  const [tab, setTab] = useState('panels')
+  const [tab, setTab] = useState('how')
 
   const tabSt = (t) => ({
     padding:'8px 18px', fontSize:13, fontWeight:600, cursor:'pointer',
@@ -279,105 +154,146 @@ export default function EnginePage({ engineRules, setEngineRules, materials, acc
     fontFamily:'inherit', transition:'color 0.15s',
   })
 
-  function updatePanelRule(id, updated) { setEngineRules(r => ({ ...r, panelRules:r.panelRules.map(p=>p.id===id?updated:p) })) }
-  function deletePanelRule(id)          { setEngineRules(r => ({ ...r, panelRules:r.panelRules.filter(p=>p.id!==id) })); toast('Rule deleted') }
-  function addPanelRule()               { const n={id:'panel_'+Date.now(),label:'New Panel',qty:'1',area:'W*D',material_slot:'body',edge_formula:'W',enabled:true,note:''}; setEngineRules(r=>({...r,panelRules:[...r.panelRules,n]})) }
-
-  function updateAccRule(id, updated)   { setEngineRules(r => ({ ...r, accessoryRules:r.accessoryRules.map(a=>a.id===id?updated:a) })) }
-  function deleteAccRule(id)            { setEngineRules(r => ({ ...r, accessoryRules:r.accessoryRules.filter(a=>a.id!==id) })); toast('Rule deleted') }
-  function addAccRule()                 { const n={id:'acc_'+Date.now(),label:'New Accessory',acc_id:'',qty:'1',condition:'',enabled:true,note:''}; setEngineRules(r=>({...r,accessoryRules:[...r.accessoryRules,n]})) }
-
   function updateCategoryDefault(cat, slot, val) {
     setEngineRules(r => ({ ...r, categoryDefaults:{ ...r.categoryDefaults, [cat]:{ ...(r.categoryDefaults[cat]||{}), [slot]:val } } }))
   }
-
-  const panels = engineRules.panelRules || []
-  const accs   = engineRules.accessoryRules || []
 
   return (
     <div style={{ padding:'24px 28px', overflowY:'auto', flex:1 }}>
       <div style={{ marginBottom:20 }}>
         <h2 style={{ fontSize:20, fontWeight:800, color:COLORS.text, letterSpacing:'-0.02em', marginBottom:4 }}>Costing Engine</h2>
-        <p style={{ fontSize:13, color:COLORS.textMuted }}>Rules define which panels and accessories are included in every SKU cost. Toggle rules on/off without deleting them.</p>
+        <p style={{ fontSize:13, color:COLORS.textMuted }}>Understand how every cost is calculated. The engine runs automatically on every SKU using these rules.</p>
       </div>
 
-      {/* Stat strip */}
+      {/* Summary strip */}
       <div style={{ display:'flex', gap:10, marginBottom:20 }}>
         {[
-          { label:'Panel Rules', on:panels.filter(r=>r.enabled).length, total:panels.length, color:COLORS.accent },
-          { label:'Accessory Rules', on:accs.filter(r=>r.enabled).length, total:accs.length, color:COLORS.purple },
-          { label:'Categories', on:Object.keys(engineRules.categoryDefaults||{}).length, total:CATEGORIES.length, color:COLORS.teal },
+          { label:'Panel Types', value:PANEL_LOGIC.length, color:COLORS.accent, note:'Cut from sheet material' },
+          { label:'Accessory Rules', value:ACC_LOGIC.length, color:COLORS.purple, note:'Auto-included by conditions' },
+          { label:'Material Categories', value:CATEGORIES.length, color:COLORS.teal, note:'With default assignments' },
         ].map(s => (
-          <div key={s.label} style={{ flex:1, background:COLORS.surface, border:`1px solid ${COLORS.border}`, borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span style={{ fontSize:12, color:COLORS.textMuted, fontWeight:600 }}>{s.label}</span>
-            <span style={{ fontSize:15, fontWeight:800, color:s.color }}>
-              {s.on}<span style={{ fontSize:11, color:COLORS.textMuted, fontWeight:400 }}>/{s.total} active</span>
-            </span>
+          <div key={s.label} style={{ flex:1, background:COLORS.surface, border:`1px solid ${COLORS.border}`, borderRadius:10, padding:'12px 16px' }}>
+            <div style={{ fontSize:22, fontWeight:900, color:s.color, marginBottom:2 }}>{s.value}</div>
+            <div style={{ fontSize:12, fontWeight:700, color:COLORS.text }}>{s.label}</div>
+            <div style={{ fontSize:11, color:COLORS.textMuted, marginTop:2 }}>{s.note}</div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
       <div style={{ display:'flex', borderBottom:`1px solid ${COLORS.border}`, marginBottom:20 }}>
-        <button onClick={()=>setTab('panels')} style={tabSt('panels')}>Panels ({panels.length})</button>
-        <button onClick={()=>setTab('accessories')} style={tabSt('accessories')}>Accessories ({accs.length})</button>
+        <button onClick={()=>setTab('how')} style={tabSt('how')}>How It Works</button>
+        <button onClick={()=>setTab('panels')} style={tabSt('panels')}>Panel Rules</button>
+        <button onClick={()=>setTab('accessories')} style={tabSt('accessories')}>Accessory Rules</button>
+        <button onClick={()=>setTab('commercial')} style={tabSt('commercial')}>Pricing Logic</button>
         <button onClick={()=>setTab('categories')} style={tabSt('categories')}>Material Defaults</button>
       </div>
 
+      {/* HOW IT WORKS */}
+      {tab==='how' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ background:COLORS.accent+'10', border:`1px solid ${COLORS.accent}30`, borderRadius:12, padding:'16px 20px' }}>
+            <div style={{ fontSize:14, fontWeight:800, color:COLORS.text, marginBottom:8 }}>How a SKU cost is calculated</div>
+            <div style={{ fontSize:13, color:COLORS.textDim, lineHeight:1.8 }}>
+              When you upload or add a SKU, the engine reads its dimensions and attributes, then automatically:
+            </div>
+            <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:8 }}>
+              {[
+                ['1', COLORS.accent, 'Generates panels', 'Based on Width, Depth, Height, Doors, Shelves, Spaces, Drawers — each panel type is calculated and assigned to its material slot (Body, Door, or Back).'],
+                ['2', COLORS.amber, 'Calculates sheet usage', 'Each material group is converted to full sheets (244×122 cm) with a 10% cutting waste factor. Cost = sheets × price per sheet.'],
+                ['3', COLORS.purple, 'Adds accessories', 'Hinges, slides, handles, pins, hanger rods, and mirrors are added automatically based on the SKU attributes and the conditions in the Accessory Rules tab.'],
+                ['4', COLORS.orange, 'Computes edge banding', 'All exposed front edges are summed in linear meters and multiplied by the edge banding price per meter.'],
+                ['5', COLORS.green, 'Applies commercial settings', 'COGS → Overhead → Seller Markup → VAT → Homzmart Commission → Recommended Price. See the Pricing Logic tab for details.'],
+              ].map(([n, c, title, desc]) => (
+                <div key={n} style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
+                  <div style={{ width:24, height:24, borderRadius:'50%', background:c+'20', color:c, fontWeight:800, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:1 }}>{n}</div>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, color:COLORS.text, marginBottom:2 }}>{title}</div>
+                    <div style={{ fontSize:12, color:COLORS.textMuted, lineHeight:1.6 }}>{desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ background:COLORS.amber+'10', border:`1px solid ${COLORS.amber}30`, borderRadius:10, padding:'12px 16px', fontSize:12, color:COLORS.textDim, lineHeight:1.7 }}>
+            <strong style={{color:COLORS.amber}}>Note on material dimensions: </strong>
+            The engine ignores panel thickness for area calculations (standard practice for quoting at this stage). All dimensions in the CSV are external/nominal dimensions. Sheet area is 244 × 122 cm (standard Egyptian market sheet size).
+          </div>
+        </div>
+      )}
+
+      {/* PANEL RULES */}
       {tab==='panels' && (
         <div>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-            <div>
-              <div style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>Panel Rules</div>
-              <div style={{ fontSize:12, color:COLORS.textMuted, marginTop:2 }}>Each rule = a set of cut panels. Cost = qty × area → grouped by material → converted to sheets.</div>
-            </div>
-            <Btn size="sm" onClick={addPanelRule}><Icon name="plus" size={14}/> Add Panel Rule</Btn>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>Panel Rules</div>
+            <div style={{ fontSize:12, color:COLORS.textMuted, marginTop:2 }}>Each rule defines a set of cut panels. Click any row to see the reasoning behind it.</div>
           </div>
-          <VarsReference/>
-          {panels.map(rule => (
-            <PanelRuleCard key={rule.id} rule={rule} onChange={u=>updatePanelRule(rule.id,u)} onDelete={()=>deletePanelRule(rule.id)}/>
-          ))}
-          {panels.length===0 && <div style={{ textAlign:'center', padding:40, color:COLORS.textMuted }}>No panel rules. <button onClick={addPanelRule} style={{ background:'none',border:'none',color:COLORS.accent,cursor:'pointer',fontFamily:'inherit' }}>Add one →</button></div>}
+          <Card style={{ padding:0, overflow:'hidden' }}>
+            {PANEL_LOGIC.map((p,i) => <PanelRow key={i} p={p}/>)}
+          </Card>
+          <div style={{ marginTop:12, padding:'10px 14px', background:COLORS.surface, borderRadius:8, fontSize:12, color:COLORS.textMuted, border:`1px solid ${COLORS.border}` }}>
+            💡 <strong>Sheet waste:</strong> A 10% cutting waste factor is applied to all panel areas before converting to full sheets. This accounts for off-cuts, saw kerfs, and layout inefficiencies — standard in Egyptian furniture manufacturing.
+          </div>
         </div>
       )}
 
+      {/* ACCESSORY RULES */}
       {tab==='accessories' && (
         <div>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-            <div>
-              <div style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>Accessory Rules</div>
-              <div style={{ fontSize:12, color:COLORS.textMuted, marginTop:2 }}>Auto-include accessories when conditions are met. Quantity is evaluated per SKU.</div>
-            </div>
-            <Btn size="sm" onClick={addAccRule}><Icon name="plus" size={14}/> Add Accessory Rule</Btn>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>Accessory Rules</div>
+            <div style={{ fontSize:12, color:COLORS.textMuted, marginTop:2 }}>Accessories are auto-included based on the SKU's attributes. Click any row to see the logic.</div>
           </div>
-          <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
-            {Object.entries(SPECIAL_ACC).map(([k,v]) => (
-              <div key={k} style={{ flex:1, minWidth:160, background:COLORS.surface, border:`1px solid ${v.color}30`, borderRadius:9, padding:'8px 12px' }}>
-                <div style={{ fontSize:11, fontWeight:700, color:v.color, marginBottom:2 }}>{v.label}</div>
-                <div style={{ fontSize:11, color:COLORS.textMuted }}>{v.desc}</div>
-              </div>
-            ))}
+          <Card style={{ padding:0, overflow:'hidden' }}>
+            {ACC_LOGIC.map((a,i) => <AccRow key={i} a={a}/>)}
+          </Card>
+          <div style={{ marginTop:12, padding:'10px 14px', background:COLORS.surface, borderRadius:8, fontSize:12, color:COLORS.textMuted, border:`1px solid ${COLORS.border}` }}>
+            💡 Accessory prices are set in <strong>Pricing Config</strong>. The engine uses the standard price unless you switch a SKU to "Good Quality" mode in the calculator, which uses the premium price.
           </div>
-          <VarsReference/>
-          {accs.map(rule => (
-            <AccRuleCard key={rule.id} rule={rule} accessories={accessories} onChange={u=>updateAccRule(rule.id,u)} onDelete={()=>deleteAccRule(rule.id)}/>
-          ))}
-          {accs.length===0 && <div style={{ textAlign:'center', padding:40, color:COLORS.textMuted }}>No accessory rules. <button onClick={addAccRule} style={{ background:'none',border:'none',color:COLORS.accent,cursor:'pointer',fontFamily:'inherit' }}>Add one →</button></div>}
         </div>
       )}
 
+      {/* PRICING / COMMERCIAL LOGIC */}
+      {tab==='commercial' && (
+        <div>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>Pricing Logic — How the Recommended Price is Calculated</div>
+            <div style={{ fontSize:12, color:COLORS.textMuted, marginTop:2 }}>The waterfall below shows each step from raw cost to the recommended selling price.</div>
+          </div>
+          <Card style={{ padding:'4px 0', overflow:'hidden' }}>
+            {COMMERCIAL_STEPS.map((s, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:14, padding:'13px 18px', borderBottom:i<COMMERCIAL_STEPS.length-1?`1px solid ${COLORS.border}`:'none', background:s.bold?s.color+'08':'transparent' }}>
+                <div style={{ width:24, height:24, borderRadius:'50%', background:s.color+'20', color:s.color, fontWeight:800, fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:1 }}>{s.step}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:10, marginBottom:3 }}>
+                    <span style={{ fontSize:13, fontWeight:s.bold?800:600, color:s.bold?s.color:COLORS.text }}>{s.label}</span>
+                    <span style={{ fontSize:12, fontFamily:'monospace', color:COLORS.amber, background:COLORS.amber+'15', padding:'1px 7px', borderRadius:5 }}>{s.formula}</span>
+                  </div>
+                  <div style={{ fontSize:12, color:COLORS.textMuted, lineHeight:1.6 }}>{s.note}</div>
+                </div>
+              </div>
+            ))}
+          </Card>
+          <div style={{ marginTop:12, padding:'10px 14px', background:COLORS.surface, borderRadius:8, fontSize:12, color:COLORS.textMuted, border:`1px solid ${COLORS.border}`, lineHeight:1.7 }}>
+            💡 <strong>Seller Markup vs Margin:</strong> The "Seller Markup" is applied as a percentage <em>on top of</em> production cost (cost-plus). This is technically a markup, not a gross margin. To set a target gross margin, use: Markup % = Margin % ÷ (1 − Margin %). E.g. 13% gross margin → ~15% markup. Commercial settings are configured in <strong>Pricing Config</strong>.
+          </div>
+        </div>
+      )}
+
+      {/* CATEGORY DEFAULTS */}
       {tab==='categories' && (
         <div>
           <div style={{ marginBottom:14 }}>
             <div style={{ fontSize:14, fontWeight:700, color:COLORS.text }}>Material Defaults by Category</div>
-            <div style={{ fontSize:12, color:COLORS.textMuted, marginTop:2 }}>Auto-assigned when a SKU is imported via CSV. Can always be overridden per SKU in the catalog.</div>
+            <div style={{ fontSize:12, color:COLORS.textMuted, marginTop:2 }}>When a SKU is imported via CSV, it is assigned these materials automatically. You can always override per SKU in the catalog.</div>
           </div>
           <div style={{ display:'flex', gap:8, marginBottom:14 }}>
             {['body','back','door'].map(s => (
               <div key={s} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', background:COLORS.surface, border:`1px solid ${SLOT_META[s].color}30`, borderRadius:8 }}>
                 <div style={{ width:8,height:8,borderRadius:'50%',background:SLOT_META[s].color }}/>
                 <span style={{ fontSize:12, fontWeight:700, color:SLOT_META[s].color }}>{SLOT_META[s].label}</span>
-                <span style={{ fontSize:12, color:COLORS.textMuted }}>— {SLOT_META[s].desc}</span>
               </div>
             ))}
           </div>

@@ -114,6 +114,7 @@ INSERT INTO accessories (acc_id,name,price,price_good,unit,"group") VALUES
 ('HANDLE_W15','مقبض خشب ابيض 15سم',10,15,'piece','handle'),
 ('HANDLE_W25','مقبض خشب ابيض 25سم',10,15,'piece','handle'),
 ('HANDLE_W100','مقبض خشب ابيض 100سم',20,25,'piece','handle'),
+  ('HANGER_ROD','بيبة تعليق (هانجر رود)',15,20,'piece','hanger'),
 ('HANDLE_L_M','مقبض قطاع L بالمتر',20,25,'meter','handle'),
 ('KNOB_SQ','مقبض زرار مربع',13,15,'piece','handle'),
 ('KNOB_ROUND','مقبض زرار دائري',13,15,'piece','handle'),

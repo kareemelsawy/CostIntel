@@ -50,6 +50,7 @@ export const DEFAULT_ACCESSORIES = [
   { acc_id:'HANDLE_W15',name:'مقبض خشب ابيض 15سم',price:10,price_good:15,unit:'piece',group:'handle' },
   { acc_id:'HANDLE_W25',name:'مقبض خشب ابيض 25سم',price:10,price_good:15,unit:'piece',group:'handle' },
   { acc_id:'HANDLE_W100',name:'مقبض خشب ابيض 100سم',price:20,price_good:25,unit:'piece',group:'handle' },
+  { acc_id:'HANGER_ROD',name:'بيبة تعليق (هانجر رود)',price:15,price_good:20,unit:'piece',group:'hanger' },
   { acc_id:'HANDLE_L_M',name:'مقبض قطاع L بالمتر',price:20,price_good:25,unit:'meter',group:'handle' },
   { acc_id:'KNOB_SQ',name:'مقبض زرار مربع',price:13,price_good:15,unit:'piece',group:'handle' },
   { acc_id:'KNOB_ROUND',name:'مقبض زرار دائري',price:13,price_good:15,unit:'piece',group:'handle' },
