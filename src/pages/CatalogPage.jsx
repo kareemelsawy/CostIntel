@@ -144,7 +144,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
               <th style={{padding:'10px 12px',width:36}}>
                 <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} style={cbStyle} title="Select all visible"/>
               </th>
-              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'_dims',l:'W×D×H (cm)'},{c:'cost',l:'COGS (EGP)'},{c:'_sp',l:'Sell (EGP)'},{c:'margin',l:'Margin %'},{c:'_act',l:''}].map(h=>(
+              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'_dims',l:'W×D×H (cm)'},{c:'cost',l:'COGS (EGP)'},{c:'_rec',l:'Rec. Price'},{c:'_cur',l:'Current Price'},{c:'_var',l:'Variance'},{c:'margin',l:'Margin %'},{c:'_act',l:''}].map(h=>(
                 <th key={h.c} style={{padding:'10px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>{!h.c.startsWith('_')?<SH col={h.c}>{h.l}</SH>:h.l}</th>
               ))}
             </tr></thead>
@@ -161,7 +161,15 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                 <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}><span style={{background:COLORS.purple+'18',color:COLORS.purple,padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:600}}>{s.sub_category}</span></td>
                 <td style={{padding:'8px 12px',color:COLORS.textDim,fontSize:12,fontFamily:'monospace'}} onClick={()=>setSelectedSku(s)}>{s.width_cm}×{s.depth_cm}×{s.height_cm}</td>
                 <td style={{padding:'8px 12px',fontWeight:700,color:COLORS.text}} onClick={()=>setSelectedSku(s)}>{c?fmt(c.cogs):'—'}</td>
+                <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}><span style={{color:COLORS.accent,fontWeight:700}}>{c?fmt(c.recommended_selling_price):'—'}</span></td>
                 <td style={{padding:'8px 12px',color:COLORS.textDim}} onClick={()=>setSelectedSku(s)}>{s.selling_price?fmt(s.selling_price):'—'}</td>
+                <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}>{(()=>{
+                  if(!c||!s.selling_price)return<span style={{color:COLORS.textMuted}}>—</span>
+                  const variance=s.selling_price-c.recommended_selling_price
+                  const pct=(variance/c.recommended_selling_price*100).toFixed(1)
+                  const isPos=variance>0
+                  return<span style={{color:isPos?COLORS.green:COLORS.red,fontWeight:700,fontSize:12}}>{isPos?'+':''}{fmt(variance)}<span style={{fontSize:10,fontWeight:400,marginLeft:3}}>({isPos?'+':''}{pct}%)</span></span>
+                })()}</td>
                 <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}><span style={{color:mc,fontWeight:700}}>{c?.commercial?fmtP(m):'—'}</span></td>
                 <td style={{padding:'8px 12px'}}><div style={{display:'flex',gap:4}}>
                   <button onClick={e=>{e.stopPropagation();setEditingSku({...s})}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="edit" size={14}/></button>

@@ -117,19 +117,32 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
             <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ Seller Margin ({((commercial.seller_margin_percent||0)*100).toFixed(0)}% of Prod. Cost)</span><span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.seller_margin)} EGP</span></div>
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12,paddingLeft:12}}><span style={{color:COLORS.textMuted,fontStyle:'italic'}}>Subtotal</span><span style={{color:COLORS.textMuted,fontWeight:600}}>{fmt(cost.commercial.subtotal_after_seller)} EGP</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ Homzmart Margin ({((commercial.homzmart_margin_percent||commercial.commission_percent||0)*100).toFixed(0)}% of above)</span><span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.homzmart_margin)} EGP</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12,paddingLeft:12}}><span style={{color:COLORS.textMuted,fontStyle:'italic'}}>Subtotal</span><span style={{color:COLORS.textMuted,fontWeight:600}}>{fmt(cost.commercial.subtotal_after_homzmart)} EGP</span></div>
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ VAT ({((commercial.vat_percent||0)*100).toFixed(0)}% of above)</span><span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.vat)} EGP</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12,paddingLeft:12}}><span style={{color:COLORS.textMuted,fontStyle:'italic'}}>Subtotal after VAT</span><span style={{color:COLORS.textMuted,fontWeight:600}}>{fmt(cost.commercial.subtotal_after_vat)} EGP</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.textDim}}>+ Homzmart Commission ({((commercial.homzmart_margin_percent||commercial.commission_percent||0)*100).toFixed(0)}% of Selling Price)</span><span style={{color:COLORS.red,fontWeight:600}}>{fmt(cost.commercial.homzmart_margin)} EGP</span></div>
             <div style={{height:1,background:COLORS.border,margin:'8px 0'}}/>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.text,fontWeight:600}}>Selling Price</span><span style={{color:COLORS.text,fontWeight:700}}>{fmt(cost.commercial.selling_price)} EGP</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}><span style={{color:COLORS.text,fontWeight:600}}>Current Selling Price</span><span style={{color:COLORS.text,fontWeight:700}}>{fmt(cost.commercial.selling_price)} EGP</span></div>
             <div style={{height:2,background:mc,margin:'10px 0',borderRadius:1}}/>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:16,fontWeight:800}}><span style={{color:COLORS.text}}>Net Profit</span><span style={{color:mc}}>{fmt(cost.commercial.net_profit)} EGP ({fmtP(m)})</span></div>
           </>}
-          <div style={{marginTop:16,padding:'12px 14px',background:COLORS.accent+'12',borderRadius:8,border:`1px solid ${COLORS.accent}30`}}>
-            <div style={{fontSize:11,fontWeight:700,color:COLORS.accent,letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:4}}>Recommended Selling Price</div>
-            <div style={{fontSize:22,fontWeight:900,color:COLORS.accent}}>{fmt(cost.recommended_selling_price)} EGP</div>
-            <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>Break-even: covers COGS + Overhead + all margins + VAT</div>
-          </div>
+          {(()=>{const rec=cost.recommended_selling_price;const cur=cost.commercial?.selling_price||0;const variance=cur>0?cur-rec:null;const isPos=variance>0;return(
+          <div style={{marginTop:16,borderRadius:10,overflow:'hidden',border:`1px solid ${COLORS.border}`}}>
+            <div style={{padding:'12px 14px',background:COLORS.accent+'12',borderBottom:`1px solid ${COLORS.border}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:COLORS.accent,letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:4}}>Recommended Selling Price</div>
+              <div style={{fontSize:22,fontWeight:900,color:COLORS.accent}}>{fmt(rec)} EGP</div>
+              <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>Break-even: covers COGS + Overhead + Seller Margin + VAT + Homzmart</div>
+            </div>
+            {variance!==null&&<div style={{padding:'10px 14px',background:isPos?COLORS.green+'10':COLORS.red+'10',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:isPos?COLORS.green:COLORS.red,letterSpacing:'0.04em',textTransform:'uppercase'}}>{isPos?'Room to reduce price':'Price needs to increase'}</div>
+                <div style={{fontSize:11,color:COLORS.textMuted,marginTop:2}}>{isPos?'Current price is above recommended — you can reduce and stay profitable':'Current price is below recommended — you are losing money'}</div>
+              </div>
+              <div style={{textAlign:'right',flexShrink:0,marginLeft:12}}>
+                <div style={{fontSize:18,fontWeight:900,color:isPos?COLORS.green:COLORS.red}}>{isPos?'+':''}{fmt(variance)} EGP</div>
+                <div style={{fontSize:11,color:isPos?COLORS.green:COLORS.red,fontWeight:600}}>{isPos?'+':''}{((variance/rec)*100).toFixed(1)}% vs rec.</div>
+              </div>
+            </div>}
+          </div>)})()}
         </div>
       </div>
       <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:20}}>

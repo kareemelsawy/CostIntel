@@ -165,33 +165,34 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
   const homzmartMarginPct = commercial.homzmart_margin_percent || commercial.commission_percent || 0
   const vatPct = commercial.vat_percent || 0
 
-  // Recommended selling price (break-even): margins cascade on previous subtotal
-  // Production Cost → +Seller Margin(% of Prod) → +Homzmart Margin(% of Prod+Seller) → +VAT(% of subtotal)
+  // Recommended selling price (break-even):
+  // Production Cost → +Seller Margin(% of Prod Cost) → +VAT(% of subtotal) → Homzmart Margin(% of final price incl. VAT)
+  // So: SP = (ProductionCost * (1 + sellerMarginPct) * (1 + vatPct)) / (1 - homzmartMarginPct)
   const recSellerMargin = productionCost * sellerMarginPct
-  const recSubtotal1 = productionCost + recSellerMargin
-  const recHomzmartMargin = recSubtotal1 * homzmartMarginPct
-  const recSubtotal2 = recSubtotal1 + recHomzmartMargin
-  const recVat = recSubtotal2 * vatPct
-  const recommendedSP = recSubtotal2 + recVat
+  const recSubtotal1 = productionCost + recSellerMargin          // after seller margin
+  const recVat = recSubtotal1 * vatPct                           // VAT on subtotal
+  const recSubtotal2 = recSubtotal1 + recVat                     // price before Homzmart cut
+  const recommendedSP = recSubtotal2 / (1 - homzmartMarginPct)  // Homzmart takes % of final SP
+  const recHomzmartMargin = recommendedSP - recSubtotal2
 
   if (sp > 0) {
-    // Actual waterfall at given selling price — work backwards to find net profit
+    // Actual waterfall at given selling price
     // Seller Margin = % of Production Cost
     const sellerMargin = productionCost * sellerMarginPct
-    // Homzmart Margin = % of (Production Cost + Seller Margin)
     const subtotal1 = productionCost + sellerMargin
-    const homzmartMargin = subtotal1 * homzmartMarginPct
-    // VAT = % of (subtotal1 + Homzmart Margin)
-    const subtotal2 = subtotal1 + homzmartMargin
-    const vat = subtotal2 * vatPct
+    // VAT on subtotal after seller margin
+    const vat = subtotal1 * vatPct
+    const subtotal2 = subtotal1 + vat
+    // Homzmart Margin = % of final selling price (commission on total price incl. VAT)
+    const homzmartMargin = sp * homzmartMarginPct
     // Net profit = Selling Price - all costs
-    const totalCosts = productionCost + sellerMargin + homzmartMargin + vat
+    const totalCosts = productionCost + sellerMargin + vat + homzmartMargin
     const netProfit = sp - totalCosts
     commercialResult = {
       selling_price: sp, seller_margin: sellerMargin, homzmart_margin: homzmartMargin,
       vat, net_profit: netProfit, net_margin_percent: (netProfit / sp) * 100,
       recommended_selling_price: recommendedSP,
-      subtotal_after_seller: subtotal1, subtotal_after_homzmart: subtotal2,
+      subtotal_after_seller: subtotal1, subtotal_after_vat: subtotal2,
     }
   }
 

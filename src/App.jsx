@@ -201,16 +201,23 @@ export default function App() {
       if (mR.data?.length) setMaterials(mR.data)
       if (aR.data?.length) setAccessories(aR.data)
       if (cR.data?.length) { const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c })) }
-      if (sR.data?.length) setSkus(sR.data)
+      if (sR.data?.length) {
+        setSkus(sR.data)
+      } else {
+        // DB has no SKUs yet — push whatever is in local state (e.g. just-uploaded CSV)
+        const localSkus = loadLS(LS_SKUS, [])
+        if (localSkus.length) syncSkusToSupabase(localSkus)
+      }
       setDbLoaded(true)
     }).catch(e => { console.warn('DB:', e); setDbLoaded(true) })
   }, [user])
 
-  // Write SKUs to Supabase whenever they change (after initial load)
+  // Write SKUs to Supabase whenever they change (after initial DB load)
+  // user is included as a dependency so a fresh login immediately pushes local state
   useEffect(() => {
     if (!dbLoaded || !hasSupabase || !user) return
     syncSkusToSupabase(skus)
-  }, [skus, dbLoaded])
+  }, [skus, dbLoaded, user])
 
   useEffect(() => { setThemeColors(isDark); document.body.setAttribute('data-theme', isDark ? 'dark' : 'light') }, [isDark])
 
