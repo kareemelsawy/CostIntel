@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { COLORS, setThemeColors } from './lib/constants'
 import { calculateSKUCost, skuToEngineInput } from './lib/engine'
 import { DEFAULT_MATERIALS, DEFAULT_ACCESSORIES, DEFAULT_COMMERCIAL, SAMPLE_SKUS, CATEGORY_MATERIAL_DEFAULTS, DEFAULT_ENGINE_RULES } from './lib/defaults'
@@ -41,7 +41,9 @@ async function syncSkusToSupabase(skuList) {
       door_material_id: s.door_material_id || 'MDF_17_F2',
       selling_price: s.selling_price || 0, is_active: true,
     }))
-    await supabase.from('skus').upsert(rows, { onConflict: 'sku_code' })
+    const { error } = await supabase.from('skus').upsert(rows, { onConflict: 'sku_code' })
+    if (error) console.error('[CostIntel] Upsert error:', error)
+    else console.log('[CostIntel] Synced', rows.length, 'SKUs to Supabase')
   } catch (e) { console.warn('Sync SKUs error:', e) }
 }
 
@@ -150,6 +152,8 @@ export default function App() {
 
   // Track if initial DB load is done (to avoid writing defaults back to DB)
   const [dbLoaded, setDbLoaded] = useState(false)
+  // skipSyncRef: true while we are loading from DB — prevents writing DB data back to DB
+  const skipSyncRef = useRef(true)
 
   // Auth check — handles initial load AND OAuth redirect return
   useEffect(() => {
@@ -202,20 +206,30 @@ export default function App() {
       if (aR.data?.length) setAccessories(aR.data)
       if (cR.data?.length) { const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c })) }
       if (sR.data?.length) {
+        skipSyncRef.current = true   // loading from DB — don't echo back
+        console.log('[CostIntel] Loaded', sR.data.length, 'SKUs from Supabase')
         setSkus(sR.data)
       } else {
-        // DB has no SKUs yet — push whatever is in local state (e.g. just-uploaded CSV)
+        // DB is empty — push local SKUs if any exist (first-time sync from this browser)
         const localSkus = loadLS(LS_SKUS, [])
-        if (localSkus.length) syncSkusToSupabase(localSkus)
+        if (localSkus.length) {
+          skipSyncRef.current = false
+          syncSkusToSupabase(localSkus)
+        }
       }
+      // Allow sync on future user-initiated changes
+      setTimeout(() => { skipSyncRef.current = false }, 500)
       setDbLoaded(true)
-    }).catch(e => { console.warn('DB:', e); setDbLoaded(true) })
+    }).catch(e => { console.error('DB load error:', e); setDbLoaded(true) })
   }, [user])
 
-  // Write SKUs to Supabase whenever they change (after initial DB load)
-  // user is included as a dependency so a fresh login immediately pushes local state
+  // Write SKUs to Supabase on user-initiated changes only (not on DB load echo)
   useEffect(() => {
     if (!dbLoaded || !hasSupabase || !user) return
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false  // reset for next change
+      return
+    }
     syncSkusToSupabase(skus)
   }, [skus, dbLoaded, user])
 
@@ -328,7 +342,7 @@ export default function App() {
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {view === 'analytics' && <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
-            {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} />}
+            {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} onSyncSkus={syncSkusToSupabase} />}
             {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
             {view === 'engine' && <EnginePage engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
             {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}

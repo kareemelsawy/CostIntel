@@ -5,7 +5,7 @@ import { Icon, Btn, Card } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
 
-export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, onDeleteSkus }) {
+export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, onDeleteSkus, onSyncSkus }) {
   const [search,setSearch]=useState('')
   const [filterCat,setFilterCat]=useState('All')
   const [filterDoor,setFilterDoor]=useState('All')
@@ -82,7 +82,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
         imported.push(csvRowToSku(row,catDefaults))
       }
       if(imported.length===0){toast('No valid SKU rows found in file','error');return}
-      setSkus(prev=>{const existing=new Set(prev.map(s=>s.sku_code));const newOnes=imported.filter(s=>!existing.has(s.sku_code));const updated=imported.filter(s=>existing.has(s.sku_code));const merged=prev.map(s=>{const u=updated.find(x=>x.sku_code===s.sku_code);return u||s});const result=[...merged,...newOnes];toast(`Imported ${newOnes.length} new, updated ${updated.length} SKUs`);return result})
+      setSkus(prev=>{const existing=new Set(prev.map(s=>s.sku_code));const newOnes=imported.filter(s=>!existing.has(s.sku_code));const updated=imported.filter(s=>existing.has(s.sku_code));const merged=prev.map(s=>{const u=updated.find(x=>x.sku_code===s.sku_code);return u||s});const result=[...merged,...newOnes];toast(`Imported ${newOnes.length} new, updated ${updated.length} SKUs`);onSyncSkus?.(result);return result})
     }catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file,{encoding:'utf-8'});e.target.value=''
   }
 
