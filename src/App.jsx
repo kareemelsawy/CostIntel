@@ -24,7 +24,8 @@ function saveLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val))
 async function syncSkusToSupabase(skuList) {
   if (!hasSupabase || !supabase) return
   try {
-    const rows = skuList.map(s => ({\n      sku_code: s.sku_code, name: s.name || '', image_link: s.image_link || '',
+    const rows = skuList.map(s => ({
+      sku_code: s.sku_code, name: s.name || '', image_link: s.image_link || '',
       seller: s.seller || '', sub_category: s.sub_category || 'Wardrobes',
       commercial_material: s.commercial_material || 'MDF',
       width_cm: s.width_cm, depth_cm: s.depth_cm, height_cm: s.height_cm,
