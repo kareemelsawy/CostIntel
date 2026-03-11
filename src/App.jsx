@@ -61,9 +61,8 @@ function LoginPage({ onLogin }) {
 
   function handleDemoView() {
     onLogin({
-      email: 'demo@costintel.app',
-      user_metadata: { full_name: 'Demo Viewer', avatar_url: '' },
-      _isDemo: true,
+      email: 'admin@homzmart.com',
+      user_metadata: { full_name: 'Kareem Admin', avatar_url: '' },
     })
   }
 
@@ -72,9 +71,21 @@ function LoginPage({ onLogin }) {
       <div className="login-card">
         <div style={{ marginBottom: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 16 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg,#4F8EF7,#A78BFA)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect x="6" y="6" width="6" height="20" rx="1" fill="#fff" opacity="0.9"/><rect x="16" y="6" width="6" height="20" rx="1" fill="#fff" opacity="0.65"/><rect x="6" y="6" width="16" height="5" rx="1" fill="#fff"/></svg>
-            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="52" height="52">
+              <defs>
+                <linearGradient id="ci_login_bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#4338CA"/>
+                  <stop offset="100%" stopColor="#7C3AED"/>
+                </linearGradient>
+                <linearGradient id="ci_login_shine" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.20"/>
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="512" height="512" rx="115" ry="115" fill="url(#ci_login_bg)"/>
+              <rect x="0" y="0" width="512" height="512" rx="115" ry="115" fill="url(#ci_login_shine)"/>
+              <text x="256" y="316" fontFamily="'Syne','DM Sans',sans-serif" fontWeight="800" fontSize="240" letterSpacing="-8" textAnchor="middle" fill="#ffffff">CI</text>
+            </svg>
           </div>
           <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 28, fontWeight: 800, color: '#E2E8F0', letterSpacing: '-0.02em', marginBottom: 8 }}>CostIntel</h1>
           <p style={{ fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>Material costing intelligence for furniture operations</p>
@@ -91,13 +102,13 @@ function LoginPage({ onLogin }) {
           <div style={{ flex: 1, height: 1, background: '#252A3A' }} />
         </div>
 
-        <button className="google-btn" onClick={handleDemoView} style={{ background: 'transparent', border: '1px dashed #252A3A' }}>
-          <Icon name="eye" size={18} color="#64748B" />
-          Demo View
+        <button className="google-btn" onClick={handleDemoView} style={{ background: 'transparent', border: '1px solid #252A3A' }}>
+          <Icon name="user" size={18} color="#7C3AED" />
+          Continue as Admin
         </button>
 
         {error && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
-        <p style={{ fontSize: 11, color: '#475569', marginTop: 20 }}>Restricted to @homzmart.com accounts</p>
+        <p style={{ fontSize: 11, color: '#475569', marginTop: 20 }}>Google Sign-In coming soon — restricted to @homzmart.com</p>
       </div>
     </div>
   )
@@ -208,9 +219,8 @@ export default function App() {
     setEditingMat(null)
   }
 
-  const isDemo = !!user?._isDemo
   const userName = user?.user_metadata?.full_name?.split(' ')[0] || 'there'
-  const userFullName = user?.user_metadata?.full_name || 'Demo Viewer'
+  const userFullName = user?.user_metadata?.full_name || 'Admin'
 
   // Save user to localStorage for demo mode persistence
   useEffect(() => { if (user) saveLS('costintel_user', user) }, [user])
@@ -230,9 +240,21 @@ export default function App() {
       {sidebarOpen && <aside style={{ width: 240, background: COLORS.surface, borderRight: `1px solid ${COLORS.border}`, display: 'flex', flexDirection: 'column', flexShrink: 0, height: '100vh' }}>
         <div style={{ padding: '14px 16px', borderBottom: `1px solid ${COLORS.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg,#4F8EF7,#A78BFA)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 32 32" fill="none"><rect x="6" y="6" width="6" height="20" rx="1" fill="#fff" opacity="0.9"/><rect x="16" y="6" width="6" height="20" rx="1" fill="#fff" opacity="0.65"/><rect x="6" y="6" width="16" height="5" rx="1" fill="#fff"/></svg>
-            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="32" height="32" style={{ flexShrink: 0 }}>
+              <defs>
+                <linearGradient id="ci_sb_bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#4338CA"/>
+                  <stop offset="100%" stopColor="#7C3AED"/>
+                </linearGradient>
+                <linearGradient id="ci_sb_shine" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.20"/>
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="512" height="512" rx="115" ry="115" fill="url(#ci_sb_bg)"/>
+              <rect x="0" y="0" width="512" height="512" rx="115" ry="115" fill="url(#ci_sb_shine)"/>
+              <text x="256" y="316" fontFamily="'Syne','DM Sans',sans-serif" fontWeight="800" fontSize="240" letterSpacing="-8" textAnchor="middle" fill="#ffffff">CI</text>
+            </svg>
             <div>
               <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 15, letterSpacing: '-0.02em', color: COLORS.accent }}>CostIntel</div>
               <div style={{ fontSize: 10, color: COLORS.textMuted }}>v4.0</div>
@@ -269,7 +291,7 @@ export default function App() {
             }
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userFullName || 'Guest'}</div>
-              <div style={{ fontSize: 10, color: isDemo ? COLORS.amber : COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isDemo ? 'Demo View — data not persisted' : (user?.email || '')}</div>
+              <div style={{ fontSize: 10, color: COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email || ''}</div>
             </div>
             <button onClick={async () => { if (hasSupabase && supabase) await supabase.auth.signOut(); setUser(null); setDbLoaded(false); localStorage.removeItem('costintel_user') }} title="Sign out" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: COLORS.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = COLORS.red} onMouseLeave={e => e.currentTarget.style.color = COLORS.textMuted}>
@@ -283,10 +305,6 @@ export default function App() {
         <header style={{ height: 52, background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0 }}>
           <button onClick={() => setSidebarOpen(p => !p)} style={{ background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', padding: '4px 6px', borderRadius: 6 }}><Icon name="menu" size={18} /></button>
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-          {isDemo && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: COLORS.amber + '15', border: `1px solid ${COLORS.amber}33`, borderRadius: 6 }}>
-            <Icon name="eye" size={13} color={COLORS.amber} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: COLORS.amber }}>Demo View</span>
-          </div>}
           <div style={{ marginLeft: 'auto' }} />
           <button onClick={() => setIsDark(!isDark)} style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, padding: '5px 10px', cursor: 'pointer', color: COLORS.textDim, display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
             <Icon name={isDark ? 'sun' : 'moon'} size={15} color={COLORS.textMuted} /> {isDark ? 'Light' : 'Dark'}
