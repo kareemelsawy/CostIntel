@@ -52,7 +52,7 @@ function generatePanels(sku, matMap) {
   return { error: null, panels }
 }
 
-function groupAndConvert(panels, useGood) {
+function groupAndConvert(panels, useGood, waste = 0.10) {
   const groups = {}
   panels.forEach(p => {
     if (!groups[p.mid]) groups[p.mid] = { mid:p.mid, mat:p.mat, total_area:0, panels:[] }
@@ -72,7 +72,10 @@ function calcEdge(panels, edgePricePerM) {
   return { total_cm:cm, total_m: cm/100, cost: (cm/100) * edgePricePerM }
 }
 
-function calcAccessories(sku, accList, useGood) {
+function calcAccessories(sku, accList, useGood, C = {}) {
+  const PINS_SHELF = (C.shelf_pins_per_shelf?.value ?? 4)
+  const HINGE_H1   = (C.hinge_h1?.value              ?? 100)
+  const HINGE_H2   = (C.hinge_h2?.value              ?? 150)
   const { doors_count:dc, drawers_count:dwc, shelves_count:sc,
           has_mirror:mir, mirror_count:mirC, width_cm:w, height_cm:h, depth_cm:d,
           handle_type:ht, door_type:dt } = sku
@@ -90,8 +93,8 @@ function calcAccessories(sku, accList, useGood) {
     if (dd <= 47) return 'SLIDE_45'; if (dd <= 52) return 'SLIDE_50'; return 'SLIDE_55'
   }
 
-  // 1. HINGES — only for Hinged doors; count by door height (industry standard)
-  //    ≤ 120cm: 2 hinges/door · 121–180cm: 3 hinges/door · > 180cm: 4 hinges/door
+  // 1. HINGES — only for Hinged doors; count by door height (Blum CLIP top standard)
+  //    ≤ 100cm: 2 hinges/door · 101–150cm: 3 hinges/door · > 150cm: 4 hinges/door
   if (dc > 0 && isHinged) {
     const hid = 'HINGE_FULL'
     const hingesPerDoor = h <= HINGE_H1 ? 2 : h <= HINGE_H2 ? 3 : 4
@@ -155,11 +158,8 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
   // Engine constants — use engineRules.constants if provided, else hardcoded defaults
   const C = engineConstants || {}
   const WASTE        = (C.sheet_waste_pct?.value       ?? 0.10)
-  const DF_HEIGHT    = (C.drawer_front_height?.value   ?? 20)
-  const PINS_SHELF   = (C.shelf_pins_per_shelf?.value  ?? 4)
-  const SLIDE_CLEAR  = (C.slide_depth_clearance?.value ?? 5)
-  const HINGE_H1     = (C.hinge_h1?.value              ?? 120)
-  const HINGE_H2     = (C.hinge_h2?.value              ?? 180)
+  // PINS_SHELF, HINGE_H1, HINGE_H2 passed via C to calcAccessories
+  // DF_HEIGHT (20cm) and SLIDE_CLEAR (5cm) are inlined in generatePanels/calcAccessories
 
   const spacesCount = Number(sku.spaces_count) || 0
   const derivedPartitions = Math.max(0, spacesCount - 1)
@@ -180,14 +180,14 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
   const { error, panels } = generatePanels(norm, matMap)
   if (error) return { error, production_cost:0 }
 
-  const matBreakdown = groupAndConvert(panels, useGoodQuality, WASTE)
+  const matBreakdown = groupAndConvert(panels, useGoodQuality, WASTE)  // WASTE already passed
   const totalMatCost = matBreakdown.reduce((s, g) => s + g.cost, 0)
 
   const ebAcc = accList.find(a => a.acc_id === 'EDGE_STD')
   const ebPrice = ebAcc ? (useGoodQuality ? (ebAcc.price_good||ebAcc.price) : ebAcc.price) : 4
   const edge = calcEdge(panels, ebPrice)
 
-  const acc = calcAccessories(norm, accList, useGoodQuality)
+  const acc = calcAccessories(norm, accList, useGoodQuality, C)
 
   // COGS = materials + edge banding + accessories
   const cogs = totalMatCost + edge.cost + acc.total

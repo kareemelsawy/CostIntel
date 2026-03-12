@@ -97,12 +97,12 @@ export const SAMPLE_SKUS = [
 export const DEFAULT_ENGINE_RULES = {
   // --- Engine Constants (editable) ---
   constants: {
-    sheet_waste_pct:       { value: 0.10, label: 'Sheet Cutting Waste',      unit: '%',  note: 'Added to panel area before converting to sheets. 10% is standard for Egyptian furniture.' },
-    drawer_front_height:   { value: 20,   label: 'Drawer Front Height',       unit: 'cm', note: 'Standard height for drawer face panels. Adjust if your drawers use a different height.' },
-    shelf_pins_per_shelf:  { value: 4,    label: 'Shelf Support Pins',        unit: 'pcs',note: '4 pins per shelf (2 per side). Standard for adjustable shelving.' },
-    slide_depth_clearance: { value: 5,    label: 'Drawer Slide Clearance',    unit: 'cm', note: 'Subtracted from cabinet depth to get drawer slide length. 5 cm is standard.' },
-    hinge_h1:              { value: 120,  label: 'Hinge Threshold 1 (2-hinge)',unit:'cm', note: 'Doors ≤ this height get 2 hinges. Above this, 3 hinges are used.' },
-    hinge_h2:              { value: 180,  label: 'Hinge Threshold 2 (3-hinge)',unit:'cm', note: 'Doors ≤ this height (and above threshold 1) get 3 hinges. Above this, 4 hinges.' },
+    sheet_waste_pct:       { value: 0.10, label: 'Sheet Cutting Waste',      unit: '%',  note: 'Added to panel area before converting to sheets. Industry standard: 10–15% for MDF/melamine (no grain). 20–25% for grained materials.' },
+    drawer_front_height:   { value: 20,   label: 'Drawer Front Height',       unit: 'cm', note: 'Standard height for drawer face panels. 15–20 cm is typical in Egyptian & European cabinet-making.' },
+    shelf_pins_per_shelf:  { value: 4,    label: 'Shelf Support Pins',        unit: 'pcs',note: '4 pins per shelf (2 per side). Universal standard for adjustable shelving systems.' },
+    slide_depth_clearance: { value: 5,    label: 'Drawer Slide Clearance',    unit: 'cm', note: 'Subtracted from cabinet depth to determine drawer slide length. 5 cm standard (Blum/Hettich).' },
+    hinge_h1:              { value: 100,  label: 'Hinge Threshold 1 (2→3)',   unit:'cm', note: 'Doors ≤ this height get 2 hinges. Per Blum CLIP top: 2 hinges up to ~100 cm at 600mm wide / 6 kg.' },
+    hinge_h2:              { value: 150,  label: 'Hinge Threshold 2 (3→4)',   unit:'cm', note: 'Doors ≤ this height get 3 hinges. Per Blum: 3 hinges for 100–150 cm / up to 12 kg. Above → 4 hinges.' },
   },
   // --- Panel rules (shared across categories, can be overridden) ---
   // Formula variables: W=width_cm, D=depth_cm, H=height_cm,
@@ -119,7 +119,7 @@ export const DEFAULT_ENGINE_RULES = {
   // --- Accessory rules ---
   // Condition variables same as panel rules plus DOOR_TYPE, HANDLE_TYPE, HAS_MIRROR
   accessoryRules: [
-    { id:'hinges',        label:'Hinges',        acc_id:'HINGE_FULL', qty:'DOORS*3',    condition:'DOORS>0 && DOOR_TYPE=="Hinged"',   enabled:true,  note:'3 hinges per door, only for hinged doors' },
+    { id:'hinges',        label:'Hinges',        acc_id:'HINGE_FULL', qty:'DOORS*3',    condition:'DOORS>0 && DOOR_TYPE=="Hinged"',   enabled:true,  note:'Per Blum: 2 hinges ≤ 100cm, 3 hinges ≤ 150cm, 4 hinges above. Qty uses constant thresholds.' },
     { id:'sliding_track', label:'Sliding Track', acc_id:'LATCH_SLIDE',qty:'DOORS',      condition:'DOORS>0 && DOOR_TYPE=="Sliding"',  enabled:true,  note:'One sliding rail per sliding door' },
     { id:'drawer_slides', label:'Drawer Slides', acc_id:'auto_by_depth',qty:'DRAWERS',  condition:'DRAWERS>0',                        enabled:true,  note:'Auto-selects slide length by depth (≤32→30cm, ≤37→35cm, ≤42→40cm, ≤47→45cm, ≤52→50cm, else 55cm)' },
     { id:'handles',       label:'Handles',       acc_id:'HANDLE_128', qty:'DOORS+DRAWERS', condition:'HANDLE_TYPE!="Handleless" && (DOORS+DRAWERS)>0', enabled:true, note:'One handle per door/drawer. Sliding doors use recessed handle (HANDLE_SLIDE20)' },
