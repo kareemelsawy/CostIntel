@@ -50,10 +50,10 @@ function CopyBadge({ text }) {
 const selSt=()=>({...iSt(),cursor:'pointer',width:'auto',minWidth:120,padding:'4px 8px',fontSize:12})
 
 export function SKUDetailModal({ sku, materials, accessories, commercial, onClose, onEdit, onCalc, onSaveSku }) {
+  const [bodyMat,setBodyMat]=useState(sku?.body_material_id||'MDF_17_F2')
+  const [backMat,setBackMat]=useState(sku?.back_material_id||'MDF_3.2_F1')
+  const [doorMat,setDoorMat]=useState(sku?.door_material_id||'MDF_17_F2')
   if (!sku) return null
-  const [bodyMat,setBodyMat]=useState(sku.body_material_id||'MDF_17_F2')
-  const [backMat,setBackMat]=useState(sku.back_material_id||'MDF_3.2_F1')
-  const [doorMat,setDoorMat]=useState(sku.door_material_id||'MDF_17_F2')
   const matChanged = bodyMat!==sku.body_material_id||backMat!==sku.back_material_id||doorMat!==sku.door_material_id
 
   const input = useMemo(()=>({...skuToEngineInput({...sku,body_material_id:bodyMat,back_material_id:backMat,door_material_id:doorMat})}),[sku,bodyMat,backMat,doorMat])

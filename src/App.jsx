@@ -11,6 +11,34 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import PricingPage from './pages/PricingPage'
 import EnginePage from './pages/EnginePage'
 
+// ─── DB Status Badge ─────────────────────────────────────────────────────────
+function DbStatusBadge({ dbStatus: s, hasSupabase, loadFromDB }) {
+  const [show, setShow] = useState(false)
+  const color = s.phase==='loaded' ? '#22C55E' : (s.phase==='fetching'||s.phase==='init') ? '#F59E0B' : '#EF4444'
+  const label = s.phase==='loaded' ? `✓ DB · ${s.skuCount} SKUs` : s.phase==='fetching' ? '⟳ Connecting…' : s.phase==='init' ? '· Initialising' : s.phase==='empty' ? '⚠ DB empty' : `✗ ${s.phase}`
+  return (
+    <div style={{padding:'8px 10px', borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+      <div onClick={()=>setShow(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'4px 8px',borderRadius:6,background:color+'18',border:`1px solid ${color}30`}}>
+        <div style={{width:6,height:6,borderRadius:'50%',background:color,flexShrink:0}}/>
+        <span style={{fontSize:10,fontWeight:700,color,flex:1}}>{label}</span>
+        <span style={{fontSize:9,color:'#64748B'}}>tap</span>
+      </div>
+      {show && <div style={{marginTop:6,padding:'8px',background:'rgba(0,0,0,0.2)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)'}}>
+        <div style={{fontSize:10,color:'#94A3B8',lineHeight:1.8,wordBreak:'break-all'}}>
+          <div><b style={{color:'#F1F5F9'}}>Phase:</b> {s.phase}</div>
+          <div><b style={{color:'#F1F5F9'}}>SKUs in DB:</b> {s.skuCount}</div>
+          <div><b style={{color:'#F1F5F9'}}>Supabase:</b> {hasSupabase ? 'configured ✓' : '✗ NOT SET — check env vars'}</div>
+          {s.error && <div><b style={{color:'#EF4444'}}>Error:</b> {s.error}</div>}
+          {s.ts && <div><b style={{color:'#F1F5F9'}}>Time:</b> {s.ts.slice(11,19)}</div>}
+        </div>
+        <button onClick={()=>{setShow(false);loadFromDB()}} style={{marginTop:6,width:'100%',padding:'4px',background:'rgba(99,179,237,0.15)',border:'1px solid rgba(99,179,237,0.3)',borderRadius:5,color:'#63B3ED',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+          ↺ Retry load from DB
+        </button>
+      </div>}
+    </div>
+  )
+}
+
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 const LS_SKUS = 'costintel_skus'
 const LS_MATS = 'costintel_materials'
@@ -337,34 +365,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* DB Connection Status — tap to see details */}
-        {(() => {
-          const s = dbStatus
-          const color = s.phase==='loaded' ? COLORS.green : s.phase==='fetching'||s.phase==='init' ? COLORS.amber : COLORS.red
-          const label = s.phase==='loaded' ? `✓ DB · ${s.skuCount} SKUs` : s.phase==='fetching' ? '⟳ Connecting…' : s.phase==='init' ? '· Initialising' : s.phase==='empty' ? '⚠ DB empty' : `✗ ${s.phase}`
-          const [show, setShow] = useState(false)
-          return (
-            <div style={{padding:'8px 10px', borderTop:`1px solid ${COLORS.border}`}}>
-              <div onClick={()=>setShow(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'4px 8px',borderRadius:6,background:color+'12',border:`1px solid ${color}30`}}>
-                <div style={{width:6,height:6,borderRadius:'50%',background:color,flexShrink:0}}/>
-                <span style={{fontSize:10,fontWeight:700,color,flex:1}}>{label}</span>
-                <span style={{fontSize:9,color:COLORS.textMuted}}>tap</span>
-              </div>
-              {show && <div style={{marginTop:6,padding:'8px',background:COLORS.bg,borderRadius:6,border:`1px solid ${COLORS.border}`}}>
-                <div style={{fontSize:10,color:COLORS.textMuted,lineHeight:1.7,wordBreak:'break-all'}}>
-                  <div><b style={{color:COLORS.text}}>Phase:</b> {s.phase}</div>
-                  <div><b style={{color:COLORS.text}}>SKUs:</b> {s.skuCount}</div>
-                  <div><b style={{color:COLORS.text}}>Supabase:</b> {hasSupabase ? 'configured' : 'NOT SET'}</div>
-                  {s.error && <div><b style={{color:COLORS.red}}>Error:</b> {s.error}</div>}
-                  {s.ts && <div><b style={{color:COLORS.text}}>At:</b> {s.ts.slice(11,19)}</div>}
-                </div>
-                <button onClick={()=>{setShow(false);loadFromDB()}} style={{marginTop:6,width:'100%',padding:'4px',background:COLORS.accent+'20',border:`1px solid ${COLORS.accent}40`,borderRadius:5,color:COLORS.accent,fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
-                  ↺ Retry load from DB
-                </button>
-              </div>}
-            </div>
-          )
-        })()}
+        <DbStatusBadge dbStatus={dbStatus} hasSupabase={hasSupabase} loadFromDB={loadFromDB} />
       </aside>}
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
