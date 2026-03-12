@@ -10,6 +10,7 @@ import CalculatorPage from './pages/CalculatorPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import PricingPage from './pages/PricingPage'
 import EnginePage from './pages/EnginePage'
+import SellerPage from './pages/SellerPage'
 
 // ─── DB Status Badge ─────────────────────────────────────────────────────────
 function DbStatusBadge({ dbStatus: s, hasSupabase, loadFromDB }) {
@@ -325,6 +326,7 @@ export default function App() {
   const navItems = [
     { id: 'analytics', icon: 'chart', label: 'Dashboard' },
     { id: 'catalog', icon: 'grid', label: 'SKU Catalog' },
+    { id: 'sellers', icon: 'user', label: 'Seller Intelligence' },
     { id: 'engine', icon: 'cpu', label: 'Costing Engine' },
     { id: 'pricing', icon: 'tag', label: 'Pricing Config' },
   ]
@@ -401,6 +403,7 @@ export default function App() {
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {view === 'analytics' && <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
             {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} onSyncSkus={syncSkusToSupabase} />}
+            {view === 'sellers' && <SellerPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} />}
             {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} engineRules={engineRules} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
             {view === 'engine' && <EnginePage engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
             {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}

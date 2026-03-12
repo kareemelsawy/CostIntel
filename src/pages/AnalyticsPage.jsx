@@ -54,8 +54,17 @@ export default function AnalyticsPage({ skus, skuCosts, setSelectedSku, userName
 
     const avgVariance = pricedItems.length
       ? pricedItems.reduce((a, x) => a + (x.variance || 0), 0) / pricedItems.length : 0
+    const avgVariancePct = pricedItems.length
+      ? pricedItems.reduce((a, x) => a + (x.variancePct || 0), 0) / pricedItems.length : 0
     const maxAbsVariance = pricedItems.length
       ? Math.max(...pricedItems.map(x => Math.abs(x.variance || 0)), 1) : 1
+
+    // Additional insights
+    const totalCogs = items.reduce((a, x) => a + (x.cost.cogs || 0), 0)
+    const avgCogs = items.length ? totalCogs / items.length : 0
+    const avgProductionCost = items.length ? items.reduce((a, x) => a + (x.cost.production_cost || 0), 0) / items.length : 0
+    const sellers = [...new Set(skus.map(s => s.seller).filter(Boolean))]
+    const categories = [...new Set(items.map(x => x.sku.sub_category).filter(Boolean))]
 
     // Category breakdown
     const byCat = {}
@@ -68,7 +77,11 @@ export default function AnalyticsPage({ skus, skuCosts, setSelectedSku, userName
       if (variance !== null) { byCat[cat].totalVariance += variance; byCat[cat].pricedCount++ }
     })
 
-    return { items: classified, pricedItems, underpriced, overpriced, correct, unpriced, total: items.length, avgVariance, maxAbsVariance, byCat }
+    return {
+      items: classified, pricedItems, underpriced, overpriced, correct, unpriced,
+      total: items.length, avgVariance, avgVariancePct, maxAbsVariance, byCat,
+      totalCogs, avgCogs, avgProductionCost, sellerCount: sellers.length, categoryCount: categories.length,
+    }
   }, [skus, skuCosts])
 
   const sortedVariance = useMemo(() => {
@@ -92,11 +105,11 @@ export default function AnalyticsPage({ skus, skuCosts, setSelectedSku, userName
 
         {/* ── TOP STATS CARDS ── */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-          <StatCard label="Total SKUs" value={stats.total} icon="grid" color={COLORS.accent} />
-          <StatCard label="Underpriced" value={stats.underpriced} sub={`of ${stats.pricedItems.length} priced`} icon="arrowDown" color={COLORS.red} />
-          <StatCard label="Correctly Priced" value={stats.correct} sub="within ±5% of rec." icon="check" color={COLORS.green} />
-          <StatCard label="Overpriced" value={stats.overpriced} sub={`of ${stats.pricedItems.length} priced`} icon="arrowUp" color={COLORS.amber} />
-          <StatCard label="Avg. Variance" value={(stats.avgVariance >= 0 ? '+' : '') + fmt(stats.avgVariance) + ' EGP'} icon="chart" color={stats.avgVariance >= 0 ? COLORS.green : COLORS.red} />
+          <StatCard label="Total SKUs" value={stats.total} sub={`${stats.categoryCount} categories`} icon="grid" color={COLORS.accent} />
+          <StatCard label="Avg. Variance" value={(stats.avgVariancePct >= 0 ? '+' : '') + stats.avgVariancePct.toFixed(1) + '%'} sub={`${stats.pricedItems.length} priced SKUs`} icon="chart" color={stats.avgVariancePct >= 0 ? COLORS.green : COLORS.red} />
+          <StatCard label="Avg. COGS" value={fmt(stats.avgCogs) + ' EGP'} sub={'Total: ' + fmt(stats.totalCogs) + ' EGP'} icon="box" color={COLORS.amber} />
+          <StatCard label="Avg. Production Cost" value={fmt(stats.avgProductionCost) + ' EGP'} sub="COGS + overhead" icon="layers" color={COLORS.purple} />
+          <StatCard label="Sellers" value={stats.sellerCount} sub={stats.unpriced > 0 ? `${stats.unpriced} SKUs unpriced` : 'All SKUs priced'} icon="user" color={COLORS.teal} />
         </div>
 
         {/* ── PRICING HEALTH + CATEGORY PERF ── */}
