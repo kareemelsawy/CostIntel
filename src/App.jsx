@@ -16,6 +16,10 @@ function DbStatusBadge({ dbStatus: s, hasSupabase, loadFromDB }) {
   const [show, setShow] = useState(false)
   const color = s.phase==='loaded' ? '#22C55E' : (s.phase==='fetching'||s.phase==='init') ? '#F59E0B' : '#EF4444'
   const label = s.phase==='loaded' ? `✓ DB · ${s.skuCount} SKUs` : s.phase==='fetching' ? '⟳ Connecting…' : s.phase==='init' ? '· Initialising' : s.phase==='empty' ? '⚠ DB empty' : `✗ ${s.phase}`
+  const rawUrl = import.meta.env.VITE_SUPABASE_URL || ''
+  const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+  const urlPreview = rawUrl ? rawUrl.slice(0,32)+'…' : '(empty)'
+  const keyPreview = rawKey ? rawKey.slice(0,16)+'…' : '(empty)'
   return (
     <div style={{padding:'8px 10px', borderTop:'1px solid rgba(255,255,255,0.08)'}}>
       <div onClick={()=>setShow(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'4px 8px',borderRadius:6,background:color+'18',border:`1px solid ${color}30`}}>
@@ -27,7 +31,8 @@ function DbStatusBadge({ dbStatus: s, hasSupabase, loadFromDB }) {
         <div style={{fontSize:10,color:'#94A3B8',lineHeight:1.8,wordBreak:'break-all'}}>
           <div><b style={{color:'#F1F5F9'}}>Phase:</b> {s.phase}</div>
           <div><b style={{color:'#F1F5F9'}}>SKUs in DB:</b> {s.skuCount}</div>
-          <div><b style={{color:'#F1F5F9'}}>Supabase:</b> {hasSupabase ? 'configured ✓' : '✗ NOT SET — check env vars'}</div>
+          <div><b style={{color:'#F1F5F9'}}>URL:</b> {urlPreview}</div>
+          <div><b style={{color:'#F1F5F9'}}>Key:</b> {keyPreview}</div>
           {s.error && <div><b style={{color:'#EF4444'}}>Error:</b> {s.error}</div>}
           {s.ts && <div><b style={{color:'#F1F5F9'}}>Time:</b> {s.ts.slice(11,19)}</div>}
         </div>
