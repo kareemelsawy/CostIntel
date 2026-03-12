@@ -82,7 +82,6 @@ async function syncSkusToSupabase(skuList) {
       const { error } = await supabase.from('skus').upsert(batch, { onConflict: 'sku_code' })
       if (error) { console.error('[CostIntel] Upsert error (batch', i, '):', error); break }
       totalSynced += batch.length
-      console.log('[CostIntel] Synced batch', Math.ceil((i+1)/BATCH), '—', totalSynced, '/', rows.length, 'SKUs')
     }
   } catch (e) { console.warn('Sync SKUs error:', e) }
 }
@@ -96,7 +95,7 @@ async function deleteSkusFromSupabase(skuCodes) {
 }
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
-function LoginPage({ onLogin }) {
+function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -108,13 +107,6 @@ function LoginPage({ onLogin }) {
     setLoading(true); setError('')
     const { error: err } = await signInWithGoogle()
     if (err) { setError(err.message || 'Login failed'); setLoading(false) }
-  }
-
-  function handleDemoView() {
-    onLogin({
-      email: 'admin@homzmart.com',
-      user_metadata: { full_name: 'Kareem Admin', avatar_url: '' },
-    })
   }
 
   return (
@@ -150,7 +142,7 @@ function LoginPage({ onLogin }) {
 
 
         {error && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
-        <p style={{ fontSize: 11, color: '#475569', marginTop: 20 }}>Google Sign-In coming soon — restricted to @homzmart.com</p>
+        <p style={{ fontSize: 11, color: '#475569', marginTop: 20 }}>Restricted to @homzmart.com accounts</p>
       </div>
     </div>
   )
@@ -193,8 +185,8 @@ export default function App() {
   useEffect(() => {
     if (!hasSupabase) {
       // No Supabase — check if user was previously "logged in" via localStorage
-      const savedUser = loadLS('costintel_user', null)
-      if (savedUser) setUser(savedUser)
+      // Don't restore user from localStorage — no Supabase to verify, show login instead
+      // (demo mode removed — always require real auth)
       setAuthChecked(true)
       return
     }
@@ -216,7 +208,8 @@ export default function App() {
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
       } else if (event === 'TOKEN_REFRESHED' && u) {
-        setUser(u)
+        if (u.email?.endsWith('@homzmart.com')) setUser(u)
+        else { supabase.auth.signOut(); setUser(null) }
       }
       setAuthChecked(true)
     })
@@ -243,8 +236,7 @@ export default function App() {
       if (cR.data?.length) { const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c })) }
       if (sR.data?.length) {
         skipSyncRef.current = true
-        console.log('[CostIntel] Loaded', sR.data.length, 'SKUs from Supabase')
-        setDbStatus({ phase:'loaded', skuCount: sR.data.length, error: errs.map(e=>e.message).join(' | ')||null, ts:new Date().toISOString() })
+          setDbStatus({ phase:'loaded', skuCount: sR.data.length, error: errs.map(e=>e.message).join(' | ')||null, ts:new Date().toISOString() })
         setSkus(sR.data)
       } else {
         setDbStatus({ phase: errs.length ? 'error' : 'empty', skuCount:0, error: errs.map(e=>e.message).join(' | ')||null, ts:new Date().toISOString() })
@@ -259,14 +251,20 @@ export default function App() {
     })
   }, [user])
 
-  // Run on mount — public reads work without auth so Safari ITP doesn't block this
+  // Load from DB whenever user logs in, and reload when tab regains focus
   useEffect(() => {
+    if (!user) return  // SKUs are auth-gated — only load when logged in
     loadFromDB()
-    // Reload from DB when user switches back to this tab (catches updates from other browsers)
-    const onVisible = () => { if (document.visibilityState === 'visible') loadFromDB() }
+    let visTimer = null
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        clearTimeout(visTimer)
+        visTimer = setTimeout(loadFromDB, 2000) // debounce — wait 2s before reloading
+      }
+    }
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [])
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearTimeout(visTimer) }
+  }, [user])
 
   // Write SKUs to Supabase on user-initiated changes only (not on DB load echo)
   // Also fires when user logs in — if DB was empty, push local SKUs now
@@ -276,7 +274,6 @@ export default function App() {
       dbWasEmptyRef.current = false
       const localSkus = loadLS(LS_SKUS, [])
       if (localSkus.length) {
-        console.log('[CostIntel] DB was empty — pushing', localSkus.length, 'local SKUs')
         skipSyncRef.current = false
         syncSkusToSupabase(localSkus)
       }
@@ -296,7 +293,7 @@ export default function App() {
   }, [])
 
   const skuCosts = useMemo(() => {
-    const m = {}; skus.forEach(s => { m[s.sku_code] = calculateSKUCost(skuToEngineInput(s), materials, accessories, commercial) }); return m
+    const m = {}; skus.forEach(s => { m[s.sku_code] = calculateSKUCost(skuToEngineInput(s), materials, accessories, commercial, false, engineRules?.constants) }); return m
   }, [skus, materials, accessories, commercial])
 
   function handleSaveSku(data) {
@@ -319,11 +316,11 @@ export default function App() {
   const userFullName = user?.user_metadata?.full_name || 'Admin'
 
   // Save user to localStorage for demo mode persistence
-  useEffect(() => { if (user) saveLS('costintel_user', user) }, [user])
+  // User session managed by Supabase auth — not stored in localStorage
 
   // Show login if not authenticated (always — both Supabase and demo mode)
   if (!authChecked) return <div className="login-page"><div style={{ color: '#64748B', fontSize: 14 }}>Loading...</div></div>
-  if (!user) return <LoginPage onLogin={(u) => { setUser(u); saveLS('costintel_user', u) }} />
+  if (!user) return <LoginPage />
 
   const navItems = [
     { id: 'analytics', icon: 'chart', label: 'Dashboard' },
@@ -405,14 +402,14 @@ export default function App() {
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {view === 'analytics' && <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
             {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} onSyncSkus={syncSkusToSupabase} />}
-            {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
+            {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} engineRules={engineRules} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
             {view === 'engine' && <EnginePage engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
             {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}
           </div>
         </main>
       </div>
 
-      {selectedSku && <SKUDetailModal sku={selectedSku} materials={materials} accessories={accessories} commercial={commercial} onClose={() => setSelectedSku(null)} onEdit={() => { setEditingSku({ ...selectedSku }); setSelectedSku(null) }} onCalc={() => { setCalcPrefill(selectedSku); setView('calculator'); setSelectedSku(null) }} onSaveSku={handleSaveSkuFromReport} />}
+      {selectedSku && <SKUDetailModal sku={selectedSku} materials={materials} accessories={accessories} commercial={commercial} engineRules={engineRules} onClose={() => setSelectedSku(null)} onEdit={() => { setEditingSku({ ...selectedSku }); setSelectedSku(null) }} onCalc={() => { setCalcPrefill(selectedSku); setView('calculator'); setSelectedSku(null) }} onSaveSku={handleSaveSkuFromReport} />}
       {editingSku && <EditSKUModal sku={editingSku} materials={materials} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onSave={handleSaveSku} onClose={() => setEditingSku(null)} />}
       {editingMat && <EditMaterialModal mat={editingMat} onSave={handleSaveMat} onClose={() => setEditingMat(null)} />}
       <ToastContainer toasts={toasts} />

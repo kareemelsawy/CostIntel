@@ -14,7 +14,7 @@ export default function CalculatorPage({ materials, accessories, commercial, set
   useEffect(()=>{if(prefill)clearPrefill()},[])
   const set=(k,v)=>setForm(p=>{const n={...p,[k]:v};if(k==='door_type')n.has_sliding_system=v==='Sliding';if(k==='sub_category'){const d=catDefaults[v]||catDefaults['Other'];n.body_material_id=d.body;n.back_material_id=d.back;n.door_material_id=d.door};return n})
   const input=skuToEngineInput(form)
-  const cost=useMemo(()=>calculateSKUCost(input,materials,accessories,commercial,useGood),[form,materials,accessories,commercial,useGood])
+  const cost=useMemo(()=>calculateSKUCost(input,materials,accessories,commercial,useGood,engineRules?.constants),[form,materials,accessories,commercial,useGood,engineRules])
   const m=cost?.commercial?.net_margin_percent||0,mc=m>20?COLORS.green:m>0?COLORS.amber:COLORS.red
 
   function Field({label,k,type='number',options,min=0}){

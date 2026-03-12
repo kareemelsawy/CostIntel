@@ -95,6 +95,15 @@ export const SAMPLE_SKUS = [
 // Panel rules: which panels to generate, quantity formula, material slot
 // Accessory rules: which accessories to auto-include, quantity formula
 export const DEFAULT_ENGINE_RULES = {
+  // --- Engine Constants (editable) ---
+  constants: {
+    sheet_waste_pct:       { value: 0.10, label: 'Sheet Cutting Waste',      unit: '%',  note: 'Added to panel area before converting to sheets. 10% is standard for Egyptian furniture.' },
+    drawer_front_height:   { value: 20,   label: 'Drawer Front Height',       unit: 'cm', note: 'Standard height for drawer face panels. Adjust if your drawers use a different height.' },
+    shelf_pins_per_shelf:  { value: 4,    label: 'Shelf Support Pins',        unit: 'pcs',note: '4 pins per shelf (2 per side). Standard for adjustable shelving.' },
+    slide_depth_clearance: { value: 5,    label: 'Drawer Slide Clearance',    unit: 'cm', note: 'Subtracted from cabinet depth to get drawer slide length. 5 cm is standard.' },
+    hinge_h1:              { value: 120,  label: 'Hinge Threshold 1 (2-hinge)',unit:'cm', note: 'Doors ≤ this height get 2 hinges. Above this, 3 hinges are used.' },
+    hinge_h2:              { value: 180,  label: 'Hinge Threshold 2 (3-hinge)',unit:'cm', note: 'Doors ≤ this height (and above threshold 1) get 3 hinges. Above this, 4 hinges.' },
+  },
   // --- Panel rules (shared across categories, can be overridden) ---
   // Formula variables: W=width_cm, D=depth_cm, H=height_cm,
   //   DOORS=doors_count, DRAWERS=drawers_count, SHELVES=shelves_count, SPACES=spaces_count

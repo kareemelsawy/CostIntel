@@ -49,7 +49,7 @@ function CopyBadge({ text }) {
 }
 const selSt=()=>({...iSt(),cursor:'pointer',width:'auto',minWidth:120,padding:'4px 8px',fontSize:12})
 
-export function SKUDetailModal({ sku, materials, accessories, commercial, onClose, onEdit, onCalc, onSaveSku }) {
+export function SKUDetailModal({ sku, materials, accessories, commercial, engineRules, onClose, onEdit, onCalc, onSaveSku }) {
   const [bodyMat,setBodyMat]=useState(sku?.body_material_id||'MDF_17_F2')
   const [backMat,setBackMat]=useState(sku?.back_material_id||'MDF_3.2_F1')
   const [doorMat,setDoorMat]=useState(sku?.door_material_id||'MDF_17_F2')
@@ -57,7 +57,7 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
   const matChanged = bodyMat!==sku.body_material_id||backMat!==sku.back_material_id||doorMat!==sku.door_material_id
 
   const input = useMemo(()=>({...skuToEngineInput({...sku,body_material_id:bodyMat,back_material_id:backMat,door_material_id:doorMat})}),[sku,bodyMat,backMat,doorMat])
-  const cost = useMemo(()=>calculateSKUCost(input,materials,accessories,commercial),[input,materials,accessories,commercial])
+  const cost = useMemo(()=>calculateSKUCost(input,materials,accessories,commercial,false,engineRules?.constants),[input,materials,accessories,commercial,engineRules])
   if (cost.error) return <Modal onClose={onClose}><p style={{color:COLORS.red}}>{cost.error}</p></Modal>
   const m=cost.commercial?.net_margin_percent||0
   const mc=m>20?COLORS.green:m>0?COLORS.amber:COLORS.red
@@ -232,21 +232,21 @@ export function EditSKUModal({ sku, materials, catDefaults, onSave, onClose }) {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
         <div style={{gridColumn:'1/-1'}}><label style={lSt()}>SKU ID</label><input value={f.sku_code||''} onChange={e=>set('sku_code',e.target.value)} style={iSt()} placeholder="Auto if empty"/></div>
         <div style={{gridColumn:'1/-1'}}><label style={lSt()}>Product Name</label><input type="text" value={f.name||''} onChange={e=>set('name',e.target.value)} style={iSt()}/></div>
-        <div style={{gridColumn:'1/-1'}}><label style={lSt()}>Image URL</label><input type="text" value={f.image_link||''} onChange={e=>set('image_link',e.target.value)} style={iSt()} placeholder="https://..."/></div>
+        <div style={{gridColumn:'1/-1'}}><label style={lSt()}>Image URL</label><input type="text" value={f.image_link||''} onChange={e=>{ const v=e.target.value; if(v&&!v.match(/^https?:\/\//i))return; set('image_link',v) }} style={iSt()} placeholder="https://..."/></div>
         <div><label style={lSt()}>Seller</label><input type="text" value={f.seller||''} onChange={e=>set('seller',e.target.value)} style={iSt()}/></div>
         <div><label style={lSt()}>Category</label><select value={f.sub_category} onChange={e=>set('sub_category',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-        <div><label style={lSt()}>Width (cm)</label><input type="number" value={f.width_cm} onChange={e=>set('width_cm',+e.target.value)} style={iSt()}/></div>
-        <div><label style={lSt()}>Depth (cm)</label><input type="number" value={f.depth_cm} onChange={e=>set('depth_cm',+e.target.value)} style={iSt()}/></div>
-        <div><label style={lSt()}>Height (cm)</label><input type="number" value={f.height_cm} onChange={e=>set('height_cm',+e.target.value)} style={iSt()}/></div>
+        <div><label style={lSt()}>Width (cm)</label><input type="number" value={f.width_cm} onChange={e=>set('width_cm',Math.min(1000,Math.max(0,+e.target.value)))} style={iSt()} max={1000}/></div>
+        <div><label style={lSt()}>Depth (cm)</label><input type="number" value={f.depth_cm} onChange={e=>set('depth_cm',Math.min(200,Math.max(0,+e.target.value)))} style={iSt()} max={200}/></div>
+        <div><label style={lSt()}>Height (cm)</label><input type="number" value={f.height_cm} onChange={e=>set('height_cm',Math.min(500,Math.max(0,+e.target.value)))} style={iSt()} max={500}/></div>
         <div><label style={lSt()}>Door Type</label><select value={f.door_type} onChange={e=>set('door_type',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{DOOR_TYPES.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
-        <div><label style={lSt()}>No. of Doors</label><input type="number" value={f.doors_count} onChange={e=>set('doors_count',+e.target.value)} style={iSt()} min={0}/></div>
-        <div><label style={lSt()}>No. of Drawers</label><input type="number" value={f.drawers_count} onChange={e=>set('drawers_count',+e.target.value)} style={iSt()} min={0}/></div>
-        <div><label style={lSt()}>No. of Shelves</label><input type="number" value={f.shelves_count} onChange={e=>set('shelves_count',+e.target.value)} style={iSt()} min={0}/></div>
+        <div><label style={lSt()}>No. of Doors</label><input type="number" value={f.doors_count} onChange={e=>set('doors_count',Math.min(20,Math.max(0,+e.target.value)))} style={iSt()} min={0} max={20}/></div>
+        <div><label style={lSt()}>No. of Drawers</label><input type="number" value={f.drawers_count} onChange={e=>set('drawers_count',Math.min(20,Math.max(0,+e.target.value)))} style={iSt()} min={0} max={20}/></div>
+        <div><label style={lSt()}>No. of Shelves</label><input type="number" value={f.shelves_count} onChange={e=>set('shelves_count',Math.min(50,Math.max(0,+e.target.value)))} style={iSt()} min={0} max={50}/></div>
         <div><label style={lSt()}>No. of Spaces</label><input type="number" value={f.spaces_count||0} onChange={e=>set('spaces_count',+e.target.value)} style={iSt()} min={0}/></div>
         <div><label style={lSt()}>No. of Hangers</label><input type="number" value={f.hangers_count||0} onChange={e=>set('hangers_count',+e.target.value)} style={iSt()} min={0}/></div>
         <div><label style={lSt()}>Handle Type</label><select value={f.handle_type||'Normal'} onChange={e=>set('handle_type',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{HANDLE_TYPES.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
         <div><label style={lSt()}>Primary Color</label><input type="text" value={f.primary_color||''} onChange={e=>set('primary_color',e.target.value)} style={iSt()}/></div>
-        <div><label style={lSt()}>Selling Price (EGP)</label><input type="number" value={f.selling_price} onChange={e=>set('selling_price',+e.target.value)} style={iSt()} min={0}/></div>
+        <div><label style={lSt()}>Selling Price (EGP)</label><input type="number" value={f.selling_price} onChange={e=>set('selling_price',Math.min(9999999,Math.max(0,+e.target.value)))} style={iSt()} min={0} max={9999999}/></div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 0'}}><label style={{...lSt(),marginBottom:0}}>Has Mirror</label><Toggle value={!!f.has_mirror} onChange={v=>set('has_mirror',v)}/></div>
         {f.has_mirror&&<div><label style={lSt()}>Mirror Count</label><input type="number" value={f.mirror_count||0} onChange={e=>set('mirror_count',+e.target.value)} style={iSt()} min={0}/></div>}
       </div>

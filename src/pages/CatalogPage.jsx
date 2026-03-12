@@ -71,12 +71,8 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
     const reader=new FileReader()
     reader.onload=async(ev)=>{
       try{
-        const raw=ev.target.result.replace(/^﻿/,'').replace(/
-/g,'
-').replace(//g,'
-')
-        const lines=raw.split('
-').filter(l=>l.trim())
+        const raw=ev.target.result.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n')
+        const lines=raw.split('\n').filter(l=>l.trim())
         if(lines.length<2){setImportProgress(null);toast('Empty file — no data rows found','error');return}
         const total=lines.length-1
         const hdrs=lines[0].split(',').map(h=>h.trim())

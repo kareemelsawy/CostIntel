@@ -9,6 +9,7 @@
  */
 
 function generatePanels(sku, matMap) {
+  if (!sku.width_cm || !sku.height_cm || !sku.depth_cm) return { error: 'Invalid dimensions — width, height and depth must be > 0', panels: [] }
   const { width_cm:w, depth_cm:d, height_cm:h, doors_count:dc, shelves_count:sc,
           partitions_count:pc, body_material_id:bm, back_material_id:bkm, door_material_id:dm,
           door_type:dt, has_back_panel:hbp } = sku
@@ -60,7 +61,7 @@ function groupAndConvert(panels, useGood) {
   })
   return Object.values(groups).map(g => {
     const sa = g.mat.sheet_width_cm * g.mat.sheet_height_cm
-    const sheets = Math.ceil(g.total_area * 1.10 / sa)  // +10% cutting waste (industry standard)
+    const sheets = Math.ceil(g.total_area * (1 + waste) / sa)  // cutting waste from engine constants
     const price = useGood ? (g.mat.price_good || g.mat.price) : g.mat.price
     return { ...g, sheet_area:sa, sheets, cost: sheets * price, price_used:price }
   })
@@ -93,7 +94,7 @@ function calcAccessories(sku, accList, useGood) {
   //    ≤ 120cm: 2 hinges/door · 121–180cm: 3 hinges/door · > 180cm: 4 hinges/door
   if (dc > 0 && isHinged) {
     const hid = 'HINGE_FULL'
-    const hingesPerDoor = h <= 120 ? 2 : h <= 180 ? 3 : 4
+    const hingesPerDoor = h <= HINGE_H1 ? 2 : h <= HINGE_H2 ? 3 : 4
     const qty = dc * hingesPerDoor
     items.push({ name: byId[hid]?.name||'Hinge', acc_id:hid, qty, unit_price:gp(hid), cost: qty*gp(hid), note:`${hingesPerDoor}/door (H=${h}cm)` })
   }
@@ -124,7 +125,7 @@ function calcAccessories(sku, accList, useGood) {
 
   // 5. SHELF SUPPORTS — 4 pins per shelf
   if (sc > 0) {
-    const qty = sc * 4
+    const qty = sc * PINS_SHELF
     items.push({ name:'Shelf Supports', acc_id:'SHELF_SUPPORT', qty, unit_price:gp('SHELF_SUPPORT'), cost: qty*gp('SHELF_SUPPORT') })
   }
 
@@ -149,8 +150,16 @@ function calcAccessories(sku, accList, useGood) {
   return { items, total: items.reduce((s, i) => s + i.cost, 0) }
 }
 
-export function calculateSKUCost(sku, materials, accList, commercial, useGoodQuality = false) {
+export function calculateSKUCost(sku, materials, accList, commercial, useGoodQuality = false, engineConstants = {}) {
   const matMap = {}; materials.forEach(m => { matMap[m.material_id] = m })
+  // Engine constants — use engineRules.constants if provided, else hardcoded defaults
+  const C = engineConstants || {}
+  const WASTE        = (C.sheet_waste_pct?.value       ?? 0.10)
+  const DF_HEIGHT    = (C.drawer_front_height?.value   ?? 20)
+  const PINS_SHELF   = (C.shelf_pins_per_shelf?.value  ?? 4)
+  const SLIDE_CLEAR  = (C.slide_depth_clearance?.value ?? 5)
+  const HINGE_H1     = (C.hinge_h1?.value              ?? 120)
+  const HINGE_H2     = (C.hinge_h2?.value              ?? 180)
 
   const spacesCount = Number(sku.spaces_count) || 0
   const derivedPartitions = Math.max(0, spacesCount - 1)
@@ -171,7 +180,7 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
   const { error, panels } = generatePanels(norm, matMap)
   if (error) return { error, production_cost:0 }
 
-  const matBreakdown = groupAndConvert(panels, useGoodQuality)
+  const matBreakdown = groupAndConvert(panels, useGoodQuality, WASTE)
   const totalMatCost = matBreakdown.reduce((s, g) => s + g.cost, 0)
 
   const ebAcc = accList.find(a => a.acc_id === 'EDGE_STD')
@@ -204,7 +213,8 @@ export function calculateSKUCost(sku, materials, accList, commercial, useGoodQua
   const recSubtotal1 = productionCost + recSellerMargin          // after seller margin
   const recVat = recSubtotal1 * vatPct                           // VAT on subtotal
   const recSubtotal2 = recSubtotal1 + recVat                     // price before Homzmart cut
-  const recommendedSP = recSubtotal2 / (1 - homzmartMarginPct)  // Homzmart takes % of final SP
+  const divisor = 1 - homzmartMarginPct
+  const recommendedSP = divisor > 0.01 ? recSubtotal2 / divisor : recSubtotal2 * 2  // guard div/0
   const recHomzmartMargin = recommendedSP - recSubtotal2
 
   if (sp > 0) {
@@ -273,8 +283,8 @@ export function csvRowToSku(row, catDefaults) {
   const def = catDefaults[cat] || catDefaults['Other']
   const hasMirror = (row['Has Mirror']||'').toUpperCase() === 'YES'
   return {
-    sku_code: row['SKU'] || '', name: row['Product name'] || '',
-    image_link: row['Image Link'] || '', seller: row['Seller Name'] || '',
+    sku_code: (row['SKU'] || '').slice(0, 100), name: row['Product name'] || '',
+    image_link: (row['Image Link']||'').match(/^https?:\/\//i) ? row['Image Link'] : '', seller: row['Seller Name'] || '',
     sub_category: cat, commercial_material: row['Commercial Material'] || 'MDF',
     width_cm: Number(row['Width (cm)'])||100, depth_cm: Number(row['Depth (cm)'])||60,
     height_cm: Number(row['Height (cm)'])||210, door_type: row['Door Type'] || 'Hinged',

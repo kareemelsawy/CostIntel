@@ -194,7 +194,7 @@ ALTER TABLE skus                ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "pub_r_mat"   ON materials           FOR SELECT USING (true);
 CREATE POLICY "pub_r_acc"   ON accessories         FOR SELECT USING (true);
 CREATE POLICY "pub_r_com"   ON commercial_settings FOR SELECT USING (true);
-CREATE POLICY "pub_r_skus"  ON skus                FOR SELECT USING (true);
+CREATE POLICY "pub_r_skus"  ON skus                FOR SELECT USING (auth.role() = 'authenticated');
 
 CREATE POLICY "auth_w_mat"  ON materials           FOR ALL USING (auth.role()='authenticated') WITH CHECK (auth.role()='authenticated');
 CREATE POLICY "auth_w_acc"  ON accessories         FOR ALL USING (auth.role()='authenticated') WITH CHECK (auth.role()='authenticated');
