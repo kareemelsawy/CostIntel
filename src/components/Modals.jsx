@@ -214,7 +214,6 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, onClos
           )
         })()}
       </div>
-      </div>
       <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:20}}>
         <Btn variant="secondary" size="sm" onClick={onEdit}><Icon name="edit" size={14}/> Edit</Btn>
         <Btn size="sm" onClick={onCalc}><Icon name="calc" size={14}/> Calculator</Btn>
