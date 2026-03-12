@@ -61,7 +61,7 @@ function groupAndConvert(panels, useGood) {
   })
   return Object.values(groups).map(g => {
     const sa = g.mat.sheet_width_cm * g.mat.sheet_height_cm
-    const sheets = Math.ceil(g.total_area * (1 + waste) / sa)  // cutting waste from engine constants
+    const sheets = Math.ceil(g.total_area * (1 + 0.10) / sa)  // 10% cutting waste
     const price = useGood ? (g.mat.price_good || g.mat.price) : g.mat.price
     return { ...g, sheet_area:sa, sheets, cost: sheets * price, price_used:price }
   })
