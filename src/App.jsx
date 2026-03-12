@@ -325,7 +325,6 @@ export default function App() {
   const navItems = [
     { id: 'analytics', icon: 'chart', label: 'Dashboard' },
     { id: 'catalog', icon: 'grid', label: 'SKU Catalog' },
-    { id: 'calculator', icon: 'calc', label: 'Calculator' },
     { id: 'engine', icon: 'cpu', label: 'Costing Engine' },
     { id: 'pricing', icon: 'tag', label: 'Pricing Config' },
   ]

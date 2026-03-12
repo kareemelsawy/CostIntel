@@ -86,6 +86,7 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, engine
               {cost.derived_partitions>0&&` · ${cost.derived_partitions} partitions`}
               · Handle: {sku.handle_type||'Normal'}
             </div>
+            {sku.description&&<div style={{fontSize:12,color:COLORS.textDim,marginTop:6,lineHeight:1.5,fontStyle:'italic'}}>{sku.description}</div>}
           </div>
         </div>
         <button onClick={onClose} style={{background:'none',border:'none',color:COLORS.textMuted,cursor:'pointer',padding:4}}><Icon name="x" size={18}/></button>
@@ -232,6 +233,7 @@ export function EditSKUModal({ sku, materials, catDefaults, onSave, onClose }) {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
         <div style={{gridColumn:'1/-1'}}><label style={lSt()}>SKU ID</label><input value={f.sku_code||''} onChange={e=>set('sku_code',e.target.value)} style={iSt()} placeholder="Auto if empty"/></div>
         <div style={{gridColumn:'1/-1'}}><label style={lSt()}>Product Name</label><input type="text" value={f.name||''} onChange={e=>set('name',e.target.value)} style={iSt()}/></div>
+        <div style={{gridColumn:'1/-1'}}><label style={lSt()}>Description</label><textarea value={f.description||''} onChange={e=>set('description',e.target.value)} style={{...iSt(),minHeight:60,resize:'vertical'}} placeholder="Product description (optional)"/></div>
         <div style={{gridColumn:'1/-1'}}><label style={lSt()}>Image URL</label><input type="text" value={f.image_link||''} onChange={e=>{ const v=e.target.value; if(v&&!v.match(/^https?:\/\//i))return; set('image_link',v) }} style={iSt()} placeholder="https://..."/></div>
         <div><label style={lSt()}>Seller</label><input type="text" value={f.seller||''} onChange={e=>set('seller',e.target.value)} style={iSt()}/></div>
         <div><label style={lSt()}>Category</label><select value={f.sub_category} onChange={e=>set('sub_category',e.target.value)} style={{...iSt(),cursor:'pointer'}}>{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>

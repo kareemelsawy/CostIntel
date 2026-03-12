@@ -26,8 +26,9 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
     if (filterCat!=='All') list=list.filter(s=>s.sub_category===filterCat)
     if (filterDoor!=='All') list=list.filter(s=>s.door_type===filterDoor)
     if (filterSeller!=='All') list=list.filter(s=>s.seller===filterSeller)
-    if (filterMargin==='positive') list=list.filter(s=>(skuCosts[s.sku_code]?.commercial?.net_margin_percent||0)>0)
-    if (filterMargin==='negative') list=list.filter(s=>(skuCosts[s.sku_code]?.commercial?.net_margin_percent||0)<=0)
+    if (filterMargin==='underpriced') list=list.filter(s=>{const c=skuCosts[s.sku_code];if(!c||!s.selling_price||!c.recommended_selling_price)return false;return(s.selling_price-c.recommended_selling_price)/c.recommended_selling_price<-0.05})
+    if (filterMargin==='correct') list=list.filter(s=>{const c=skuCosts[s.sku_code];if(!c||!s.selling_price||!c.recommended_selling_price)return false;const p=(s.selling_price-c.recommended_selling_price)/c.recommended_selling_price;return p>=-0.05&&p<=0.05})
+    if (filterMargin==='overpriced') list=list.filter(s=>{const c=skuCosts[s.sku_code];if(!c||!s.selling_price||!c.recommended_selling_price)return false;return(s.selling_price-c.recommended_selling_price)/c.recommended_selling_price>0.05})
     if (search) { const q=search.toLowerCase(); list=list.filter(s=>s.sku_code?.toLowerCase().includes(q)||s.name?.toLowerCase().includes(q)||s.seller?.toLowerCase().includes(q)) }
     return [...list].sort((a,b)=>{
       const ca=skuCosts[a.sku_code],cb=skuCosts[b.sku_code]; let va,vb
@@ -63,8 +64,50 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
     setConfirmDelete(false)
   }
 
-  function exportCSV(){const rows=filtered.map(s=>skuToCsvRow(s));const blob=new Blob([CSV_COLUMNS.join(',')+'\\n'+rows.join('\\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_catalog_export.csv';a.click();toast('CSV exported')}
-  function downloadTemplate(){const blob=new Blob([CSV_COLUMNS.join(',')+'\\n'],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_upload_template.csv';a.click();toast('Template downloaded')}
+  function exportCSV(){
+    // Extended headers: original attributes + calculated waterfall columns
+    const calcHeaders = ['COGS (EGP)','Production Cost (EGP)','Recommended Price (EGP)','Seller Margin (EGP)','Homzmart Margin (EGP)','VAT (EGP)','Net Profit (EGP)','Net Margin %','Variance (EGP)','Variance %','Pricing Status']
+    const allHeaders = [...CSV_COLUMNS, ...calcHeaders]
+    const rows = filtered.map(s => {
+      const base = skuToCsvRow(s)
+      const c = skuCosts[s.sku_code]
+      if (!c || c.error) return base + ',' + calcHeaders.map(() => '').join(',')
+      const sp = s.selling_price || 0
+      const recSP = c.recommended_selling_price || 0
+      const variance = sp > 0 && recSP > 0 ? sp - recSP : ''
+      const variancePct = sp > 0 && recSP > 0 ? (((sp - recSP) / recSP) * 100).toFixed(1) : ''
+      const status = !sp || !recSP ? 'Unpriced' : (sp - recSP) / recSP < -0.05 ? 'Underpriced' : (sp - recSP) / recSP > 0.05 ? 'Overpriced' : 'Correctly Priced'
+      const cm = c.commercial
+      return base + ',' + [
+        (c.cogs||0).toFixed(0),
+        (c.production_cost||0).toFixed(0),
+        (recSP||0).toFixed(0),
+        (cm?.seller_margin||0).toFixed(0),
+        (cm?.homzmart_margin||0).toFixed(0),
+        (cm?.vat||0).toFixed(0),
+        (cm?.net_profit||0).toFixed(0),
+        cm?.net_margin_percent!=null ? cm.net_margin_percent.toFixed(1) : '',
+        variance !== '' ? variance.toFixed(0) : '',
+        variancePct,
+        status,
+      ].join(',')
+    })
+    const csvContent = allHeaders.join(',') + '\n' + rows.join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'sku_catalog_export.csv'
+    a.click()
+    toast('CSV exported with ' + filtered.length + ' SKUs')
+  }
+  function downloadTemplate(){
+    const blob = new Blob([CSV_COLUMNS.join(',') + '\n'], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'sku_upload_template.csv'
+    a.click()
+    toast('Template downloaded')
+  }
   function handleImport(e){
     const file=e.target.files?.[0];if(!file)return
     setImportProgress({phase:'reading',current:0,total:0,label:'Reading file…'})
@@ -189,7 +232,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
         <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{...iSt(),width:'auto',minWidth:130,cursor:'pointer'}}><option value="All">All Categories</option>{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select>
         <select value={filterDoor} onChange={e=>setFilterDoor(e.target.value)} style={{...iSt(),width:'auto',minWidth:110,cursor:'pointer'}}><option value="All">All Door Types</option>{DOOR_TYPES.map(d=><option key={d} value={d}>{d}</option>)}</select>
         <select value={filterSeller} onChange={e=>setFilterSeller(e.target.value)} style={{...iSt(),width:'auto',minWidth:120,cursor:'pointer'}}><option value="All">All Sellers</option>{sellers.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        <select value={filterMargin} onChange={e=>setFilterMargin(e.target.value)} style={{...iSt(),width:'auto',minWidth:120,cursor:'pointer'}}><option value="All">All Margins</option><option value="positive">Positive</option><option value="negative">Negative / Zero</option></select>
+        <select value={filterMargin} onChange={e=>setFilterMargin(e.target.value)} style={{...iSt(),width:'auto',minWidth:140,cursor:'pointer'}}><option value="All">All Pricing</option><option value="underpriced">Underpriced</option><option value="correct">Correctly Priced</option><option value="overpriced">Overpriced</option></select>
         {activeFilters>0&&<Btn variant="ghost" size="sm" onClick={()=>{setFilterCat('All');setFilterDoor('All');setFilterSeller('All');setFilterMargin('All')}}>Clear all</Btn>}
       </div>}
       <Card style={{padding:0,overflow:'hidden'}}>
@@ -199,12 +242,12 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
               <th style={{padding:'10px 12px',width:36}}>
                 <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} style={cbStyle} title="Select all visible"/>
               </th>
-              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'_dims',l:'W×D×H (cm)'},{c:'cost',l:'COGS (EGP)'},{c:'_rec',l:'Rec. Price'},{c:'_cur',l:'Current Price'},{c:'_var',l:'Variance'},{c:'margin',l:'Margin %'},{c:'_act',l:''}].map(h=>(
+              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'_dims',l:'W×D×H (cm)'},{c:'cost',l:'COGS (EGP)'},{c:'_rec',l:'Rec. Price'},{c:'_cur',l:'Current Price'},{c:'_var',l:'Variance'},{c:'_status',l:'Status'},{c:'_act',l:''}].map(h=>(
                 <th key={h.c} style={{padding:'10px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>{!h.c.startsWith('_')?<SH col={h.c}>{h.l}</SH>:h.l}</th>
               ))}
             </tr></thead>
             <tbody>{filtered.map(s=>{
-              const c=skuCosts[s.sku_code],m=c?.commercial?.net_margin_percent||0,mc=m>20?COLORS.green:m>0?COLORS.amber:COLORS.red
+              const c=skuCosts[s.sku_code]
               const isSelected = selectedCodes.has(s.sku_code)
               return <tr key={s.sku_code} style={{borderBottom:`1px solid ${COLORS.border}`,cursor:'pointer',transition:'background 0.1s',background:isSelected?COLORS.accent+'12':''}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background=COLORS.surfaceHover}} onMouseLeave={e=>{e.currentTarget.style.background=isSelected?COLORS.accent+'12':''}}>
                 <td style={{padding:'6px 12px',width:36}} onClick={e=>e.stopPropagation()}>
@@ -225,7 +268,12 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                   const isPos=variance>0
                   return<span style={{color:isPos?COLORS.green:COLORS.red,fontWeight:700,fontSize:12}}>{isPos?'+':''}{fmt(variance)}<span style={{fontSize:10,fontWeight:400,marginLeft:3}}>({isPos?'+':''}{pct}%)</span></span>
                 })()}</td>
-                <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}><span style={{color:mc,fontWeight:700}}>{c?.commercial?fmtP(m):'—'}</span></td>
+                <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}>{(()=>{
+                  if(!c||!s.selling_price||!c.recommended_selling_price)return<span style={{fontSize:10,color:COLORS.textMuted,fontWeight:600}}>—</span>
+                  const pct=(s.selling_price-c.recommended_selling_price)/c.recommended_selling_price
+                  const st=pct<-0.05?{l:'Underpriced',cl:COLORS.red}:pct>0.05?{l:'Overpriced',cl:COLORS.amber}:{l:'Correct',cl:COLORS.green}
+                  return<span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:5,background:st.cl+'18',color:st.cl}}>{st.l}</span>
+                })()}</td>
                 <td style={{padding:'8px 12px'}}><div style={{display:'flex',gap:4}}>
                   <button onClick={e=>{e.stopPropagation();setEditingSku({...s})}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="edit" size={14}/></button>
                   <button onClick={e=>{e.stopPropagation();setSkus(p=>p.filter(x=>x.sku_code!==s.sku_code));onDeleteSkus?.([s.sku_code]);toast('Removed')}} style={{background:'none',border:'none',cursor:'pointer',padding:4,color:COLORS.textMuted}}><Icon name="trash" size={14}/></button>

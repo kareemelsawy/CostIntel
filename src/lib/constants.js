@@ -27,11 +27,11 @@ export const DOOR_TYPES = ['Hinged','Sliding','Open']
 export const HANDLE_TYPES = ['Normal','Handleless']
 export const UNIT_TYPES = ['Floor Standing','Wall Mounted']
 
-// CSV columns — matches the Attributes.csv template exactly (no material fields)
+// CSV columns — matches the import template exactly
 export const CSV_COLUMNS = [
-  'SKU','Product name','Image Link','Seller Name','Sub Category','Commercial Material',
-  'Width (cm)','Depth (cm)','Height (cm)','Door Type','No. of Doors',
-  'No. of Drawers','No. of Shelves','No. of Spaces','No. of Hangers',
-  'Internal Division','Unit Type','Has Mirror','Mirror Count',
-  'Primary Color','Handle Type','Has Back Panel','Selling Price',
+  'SKU','Product name','Description','Image Link','Seller Name','Sub Category','Commercial Material',
+  'Width (cm)','Depth (cm)','Height (cm)','Door Type','Internal Division','Unit Type',
+  'No. of Spaces','No. of Hangers','No. of Drawers','No. of Shelves',
+  'Has Mirror','Mirror Count','Primary Color','Has Secondary Color','Handle Type','Has Back Panel',
+  'No. of Doors','Selling Price',
 ]

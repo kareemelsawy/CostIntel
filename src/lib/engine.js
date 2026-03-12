@@ -284,32 +284,34 @@ export function csvRowToSku(row, catDefaults) {
   const hasMirror = (row['Has Mirror']||'').toUpperCase() === 'YES'
   return {
     sku_code: (row['SKU'] || '').slice(0, 100), name: row['Product name'] || '',
+    description: row['Description'] || '',
     image_link: (row['Image Link']||'').match(/^https?:\/\//i) ? row['Image Link'] : '', seller: row['Seller Name'] || '',
     sub_category: cat, commercial_material: row['Commercial Material'] || 'MDF',
     width_cm: Number(row['Width (cm)'])||100, depth_cm: Number(row['Depth (cm)'])||60,
     height_cm: Number(row['Height (cm)'])||210, door_type: row['Door Type'] || 'Hinged',
-    doors_count: Number(row['No. of Doors'])||0, drawers_count: Number(row['No. of Drawers'])||0,
-    shelves_count: Number(row['No. of Shelves'])||0, spaces_count: Number(row['No. of Spaces'])||0,
-    hangers_count: Number(row['No. of Hangers'])||0, internal_division: row['Internal Division'] || 'NO',
-    unit_type: row['Unit Type'] || 'Floor Standing', has_mirror: hasMirror,
-    mirror_count: Number(row['Mirror Count'])||0, primary_color: row['Primary Color'] || '',
+    internal_division: row['Internal Division'] || 'NO', unit_type: row['Unit Type'] || 'Floor Standing',
+    spaces_count: Number(row['No. of Spaces'])||0, hangers_count: Number(row['No. of Hangers'])||0,
+    drawers_count: Number(row['No. of Drawers'])||0, shelves_count: Number(row['No. of Shelves'])||0,
+    has_mirror: hasMirror, mirror_count: Number(row['Mirror Count'])||0,
+    primary_color: row['Primary Color'] || '', has_secondary_color: row['Has Secondary Color'] || 'NO',
     handle_type: row['Handle Type'] || 'Normal', has_back_panel: row['Has Back Panel'] || 'Close',
+    doors_count: Number(row['No. of Doors'])||0,
     selling_price: Number(row['Selling Price'])||0,
     // Materials auto-assigned by category
     body_material_id: def.body, back_material_id: def.back, door_material_id: def.door,
   }
 }
 
-// SKU → CSV row (no material columns)
+// SKU → CSV row (matches CSV_COLUMNS order)
 export function skuToCsvRow(s) {
   return [
-    s.sku_code, `"${(s.name||'').replace(/"/g,'""')}"`, s.image_link||'',
-    `"${s.seller||''}"`, s.sub_category, s.commercial_material||'MDF',
-    s.width_cm, s.depth_cm, s.height_cm, s.door_type, s.doors_count,
-    s.drawers_count, s.shelves_count, s.spaces_count||0, s.hangers_count||0,
+    s.sku_code, `"${(s.name||'').replace(/"/g,'""')}"`, `"${(s.description||'').replace(/"/g,'""')}"`,
+    s.image_link||'', `"${s.seller||''}"`, s.sub_category, s.commercial_material||'MDF',
+    s.width_cm, s.depth_cm, s.height_cm, s.door_type,
     s.internal_division||'NO', s.unit_type||'Floor Standing',
+    s.spaces_count||0, s.hangers_count||0, s.drawers_count, s.shelves_count,
     s.has_mirror?'YES':'NO', s.mirror_count||0,
-    s.primary_color||'', s.handle_type||'Normal', s.has_back_panel||'Close',
-    s.selling_price||0,
+    s.primary_color||'', s.has_secondary_color||'NO', s.handle_type||'Normal', s.has_back_panel||'Close',
+    s.doors_count, s.selling_price||0,
   ].join(',')
 }
