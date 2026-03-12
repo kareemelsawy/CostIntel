@@ -152,6 +152,7 @@ export default function App() {
 
   // Track if initial DB load is done (to avoid writing defaults back to DB)
   const [dbLoaded, setDbLoaded] = useState(false)
+  const [dbStatus, setDbStatus] = useState({ phase:'init', skuCount:0, error:null, ts:null })
   // skipSyncRef: true while we are loading from DB — prevents writing DB data back to DB
   const skipSyncRef = useRef(true)
 
@@ -189,40 +190,47 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Load SKUs + config from Supabase on mount (SKU reads are public — no auth required)
-  // This runs immediately regardless of login state so Safari/ITP users still see shared data
-  useEffect(() => {
+  // Load SKUs + config from Supabase — callable manually for retry
+  const loadFromDB = useCallback(() => {
     if (!hasSupabase) {
+      setDbStatus({ phase:'no_supabase', skuCount:0, error:'VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY not set', ts:new Date().toISOString() })
       setDbLoaded(true)
       return
     }
+    setDbStatus({ phase:'fetching', skuCount:0, error:null, ts:new Date().toISOString() })
     Promise.all([
       supabase.from('materials').select('*').eq('is_active', true),
       supabase.from('accessories').select('*').eq('is_active', true),
       supabase.from('commercial_settings').select('*'),
       supabase.from('skus').select('*').eq('is_active', true).order('created_at', { ascending: false }),
     ]).then(([mR, aR, cR, sR]) => {
+      const errs = [mR.error, aR.error, cR.error, sR.error].filter(Boolean)
       if (mR.data?.length) setMaterials(mR.data)
       if (aR.data?.length) setAccessories(aR.data)
       if (cR.data?.length) { const c = {}; cR.data.forEach(r => { c[r.key] = r.value }); setCommercial(p => ({ ...p, ...c })) }
       if (sR.data?.length) {
-        skipSyncRef.current = true   // loading from DB — don't echo back to Supabase
+        skipSyncRef.current = true
         console.log('[CostIntel] Loaded', sR.data.length, 'SKUs from Supabase')
+        setDbStatus({ phase:'loaded', skuCount: sR.data.length, error: errs.map(e=>e.message).join(' | ')||null, ts:new Date().toISOString() })
         setSkus(sR.data)
       } else {
-        // DB has no SKUs yet — only push local ones if user is authenticated
+        setDbStatus({ phase: errs.length ? 'error' : 'empty', skuCount:0, error: errs.map(e=>e.message).join(' | ')||null, ts:new Date().toISOString() })
         if (user) {
           const localSkus = loadLS(LS_SKUS, [])
-          if (localSkus.length) {
-            skipSyncRef.current = false
-            syncSkusToSupabase(localSkus)
-          }
+          if (localSkus.length) { skipSyncRef.current = false; syncSkusToSupabase(localSkus) }
         }
       }
       setTimeout(() => { skipSyncRef.current = false }, 500)
       setDbLoaded(true)
-    }).catch(e => { console.error('[CostIntel] DB load error:', e); setDbLoaded(true) })
-  }, [])  // ← runs ONCE on mount, not gated on user
+    }).catch(e => {
+      console.error('[CostIntel] DB load error:', e)
+      setDbStatus({ phase:'error', skuCount:0, error: e?.message||String(e), ts:new Date().toISOString() })
+      setDbLoaded(true)
+    })
+  }, [user])
+
+  // Run on mount — public reads work without auth so Safari ITP doesn't block this
+  useEffect(() => { loadFromDB() }, [])
 
   // Write SKUs to Supabase on user-initiated changes only (not on DB load echo)
   useEffect(() => {
@@ -328,6 +336,35 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* DB Connection Status — tap to see details */}
+        {(() => {
+          const s = dbStatus
+          const color = s.phase==='loaded' ? COLORS.green : s.phase==='fetching'||s.phase==='init' ? COLORS.amber : COLORS.red
+          const label = s.phase==='loaded' ? `✓ DB · ${s.skuCount} SKUs` : s.phase==='fetching' ? '⟳ Connecting…' : s.phase==='init' ? '· Initialising' : s.phase==='empty' ? '⚠ DB empty' : `✗ ${s.phase}`
+          const [show, setShow] = useState(false)
+          return (
+            <div style={{padding:'8px 10px', borderTop:`1px solid ${COLORS.border}`}}>
+              <div onClick={()=>setShow(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'4px 8px',borderRadius:6,background:color+'12',border:`1px solid ${color}30`}}>
+                <div style={{width:6,height:6,borderRadius:'50%',background:color,flexShrink:0}}/>
+                <span style={{fontSize:10,fontWeight:700,color,flex:1}}>{label}</span>
+                <span style={{fontSize:9,color:COLORS.textMuted}}>tap</span>
+              </div>
+              {show && <div style={{marginTop:6,padding:'8px',background:COLORS.bg,borderRadius:6,border:`1px solid ${COLORS.border}`}}>
+                <div style={{fontSize:10,color:COLORS.textMuted,lineHeight:1.7,wordBreak:'break-all'}}>
+                  <div><b style={{color:COLORS.text}}>Phase:</b> {s.phase}</div>
+                  <div><b style={{color:COLORS.text}}>SKUs:</b> {s.skuCount}</div>
+                  <div><b style={{color:COLORS.text}}>Supabase:</b> {hasSupabase ? 'configured' : 'NOT SET'}</div>
+                  {s.error && <div><b style={{color:COLORS.red}}>Error:</b> {s.error}</div>}
+                  {s.ts && <div><b style={{color:COLORS.text}}>At:</b> {s.ts.slice(11,19)}</div>}
+                </div>
+                <button onClick={()=>{setShow(false);loadFromDB()}} style={{marginTop:6,width:'100%',padding:'4px',background:COLORS.accent+'20',border:`1px solid ${COLORS.accent}40`,borderRadius:5,color:COLORS.accent,fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                  ↺ Retry load from DB
+                </button>
+              </div>}
+            </div>
+          )
+        })()}
       </aside>}
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
