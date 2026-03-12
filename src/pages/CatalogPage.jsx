@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { COLORS, CATEGORIES, DOOR_TYPES, CSV_COLUMNS } from '../lib/constants'
 import { fmt, fmtP, csvRowToSku, skuToCsvRow } from '../lib/engine'
 import { Icon, Btn, Card } from '../components/UI'
@@ -11,6 +11,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   const [filterDoor,setFilterDoor]=useState('All')
   const [filterSeller,setFilterSeller]=useState('All')
   const [filterMargin,setFilterMargin]=useState('All')
+  const [importProgress, setImportProgress] = useState(null) // {phase,current,total,label}
   const [sortBy,setSortBy]=useState('sku_code')
   const [sortDir,setSortDir]=useState('asc')
   const [showFilters,setShowFilters]=useState(false)
@@ -65,42 +66,89 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   function exportCSV(){const rows=filtered.map(s=>skuToCsvRow(s));const blob=new Blob([CSV_COLUMNS.join(',')+'\\n'+rows.join('\\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_catalog_export.csv';a.click();toast('CSV exported')}
   function downloadTemplate(){const blob=new Blob([CSV_COLUMNS.join(',')+'\\n'],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sku_upload_template.csv';a.click();toast('Template downloaded')}
   function handleImport(e){
-    const file=e.target.files?.[0];if(!file)return;const reader=new FileReader()
-    reader.onload=(ev)=>{try{
-      // Strip BOM, normalise CRLF → LF, split
-      const raw=ev.target.result.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n')
-      const lines=raw.split('\n').filter(l=>l.trim())
-      if(lines.length<2){toast('Empty file — no data rows found','error');return}
-      const hdrs=lines[0].split(',').map(h=>h.trim())
-      const imported=[]
-      for(let i=1;i<lines.length;i++){
-        const vals=[];let cur='',inQ=false
-        for(const ch of lines[i]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch}
-        vals.push(cur.trim())
-        const row={};hdrs.forEach((h,j)=>{row[h]=vals[j]?.replace(/^"|"$/g,'').replace(/#N\/A/g,'').trim()})
-        if(!row['SKU']&&!row['Product name'])continue
-        imported.push(csvRowToSku(row,catDefaults))
-      }
-      if(imported.length===0){toast('No valid SKU rows found in file','error');return}
-      setSkus(prev=>{
-        const existing=new Set(prev.map(s=>s.sku_code))
-        const duplicates=imported.filter(s=>existing.has(s.sku_code)).map(s=>s.sku_code)
-        if(duplicates.length>0){
-          toast(`Blocked — ${duplicates.length} SKU(s) already exist: ${duplicates.slice(0,3).join(', ')}${duplicates.length>3?' …':''}`, 'error')
-          return prev
+    const file=e.target.files?.[0];if(!file)return
+    setImportProgress({phase:'reading',current:0,total:0,label:'Reading file…'})
+    const reader=new FileReader()
+    reader.onload=async(ev)=>{
+      try{
+        const raw=ev.target.result.replace(/^﻿/,'').replace(/
+/g,'
+').replace(//g,'
+')
+        const lines=raw.split('
+').filter(l=>l.trim())
+        if(lines.length<2){setImportProgress(null);toast('Empty file — no data rows found','error');return}
+        const total=lines.length-1
+        const hdrs=lines[0].split(',').map(h=>h.trim())
+        setImportProgress({phase:'parsing',current:0,total,label:`Parsing ${total.toLocaleString()} rows…`})
+
+        // Parse in chunks so UI stays responsive
+        const CHUNK=500
+        const imported=[]
+        for(let i=1;i<lines.length;i+=CHUNK){
+          const end=Math.min(i+CHUNK,lines.length)
+          for(let j=i;j<end;j++){
+            const vals=[];let cur='',inQ=false
+            for(const ch of lines[j]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch}
+            vals.push(cur.trim())
+            const row={};hdrs.forEach((h,k)=>{row[h]=vals[k]?.replace(/^"|"$/g,'').replace(/#N\/A/g,'').trim()})
+            if(!row['SKU']&&!row['Product name'])continue
+            imported.push(csvRowToSku(row,catDefaults))
+          }
+          setImportProgress({phase:'parsing',current:Math.min(i+CHUNK-1,total),total,label:`Parsing… ${Math.min(i+CHUNK-1,total).toLocaleString()} / ${total.toLocaleString()}`})
+          await new Promise(r=>setTimeout(r,0)) // yield to UI
         }
-        const result=[...prev,...imported]
-        toast(`Imported ${imported.length} new SKU${imported.length!==1?'s':''}`)
-        onSyncSkus?.(result)
-        return result
-      })
-    }catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file,{encoding:'utf-8'});e.target.value=''
+
+        if(imported.length===0){setImportProgress(null);toast('No valid SKU rows found in file','error');return}
+
+        setImportProgress({phase:'checking',current:imported.length,total:imported.length,label:`Checking ${imported.length.toLocaleString()} SKUs for duplicates…`})
+        await new Promise(r=>setTimeout(r,0))
+
+        setSkus(prev=>{
+          const existing=new Set(prev.map(s=>s.sku_code))
+          const duplicates=imported.filter(s=>existing.has(s.sku_code)).map(s=>s.sku_code)
+          if(duplicates.length>0){
+            setImportProgress(null)
+            toast(`Blocked — ${duplicates.length} duplicate SKU code${duplicates.length!==1?'s':''}: ${duplicates.slice(0,3).join(', ')}${duplicates.length>3?` +${duplicates.length-3} more`:''}`, 'error')
+            return prev
+          }
+          const result=[...prev,...imported]
+          setImportProgress({phase:'syncing',current:imported.length,total:imported.length,label:`Saving ${imported.length.toLocaleString()} SKUs to database…`})
+          onSyncSkus?.(result)
+          setTimeout(()=>setImportProgress(null),1500)
+          toast(`✓ Imported ${imported.length.toLocaleString()} SKU${imported.length!==1?'s':''}`)
+          return result
+        })
+      }catch(err){setImportProgress(null);toast('Import failed: '+err.message,'error')}
+    }
+    reader.readAsText(file,'utf-8');e.target.value=''
   }
 
   const cbStyle = { width: 15, height: 15, cursor: 'pointer', accentColor: COLORS.accent }
 
   return (
-    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1,position:'relative'}}>
+      {importProgress && (
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:COLORS.surface,borderRadius:16,padding:'32px 40px',width:380,boxShadow:'0 20px 60px rgba(0,0,0,0.5)',border:`1px solid ${COLORS.border}`}}>
+            <div style={{fontSize:15,fontWeight:700,color:COLORS.text,marginBottom:6}}>
+              {importProgress.phase==='syncing' ? '✓ Upload Complete' : '⟳ Uploading SKUs…'}
+            </div>
+            <div style={{fontSize:12,color:COLORS.textMuted,marginBottom:16}}>{importProgress.label}</div>
+            {importProgress.total>0 && importProgress.phase!=='syncing' && (
+              <>
+                <div style={{background:COLORS.bg,borderRadius:999,height:8,overflow:'hidden',marginBottom:8}}>
+                  <div style={{height:'100%',borderRadius:999,background:COLORS.accent,width:`${Math.round((importProgress.current/importProgress.total)*100)}%`,transition:'width 0.2s'}}/>
+                </div>
+                <div style={{fontSize:11,color:COLORS.textMuted,textAlign:'right'}}>{Math.round((importProgress.current/importProgress.total)*100)}%</div>
+              </>
+            )}
+            {importProgress.phase==='syncing' && (
+              <div style={{textAlign:'center',fontSize:28,marginTop:8}}>🎉</div>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:10}}>
         <div>
           <h2 style={{fontSize:20,fontWeight:800,color:COLORS.text,letterSpacing:'-0.02em',marginBottom:4}}>SKU Catalog</h2>

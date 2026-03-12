@@ -74,9 +74,16 @@ async function syncSkusToSupabase(skuList) {
       door_material_id: s.door_material_id || 'MDF_17_F2',
       selling_price: s.selling_price || 0, is_active: true,
     }))
-    const { error } = await supabase.from('skus').upsert(rows, { onConflict: 'sku_code' })
-    if (error) console.error('[CostIntel] Upsert error:', error)
-    else console.log('[CostIntel] Synced', rows.length, 'SKUs to Supabase')
+    // Batch upserts — Supabase handles ~500 rows per request reliably
+    const BATCH = 500
+    let totalSynced = 0
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH)
+      const { error } = await supabase.from('skus').upsert(batch, { onConflict: 'sku_code' })
+      if (error) { console.error('[CostIntel] Upsert error (batch', i, '):', error); break }
+      totalSynced += batch.length
+      console.log('[CostIntel] Synced batch', Math.ceil((i+1)/BATCH), '—', totalSynced, '/', rows.length, 'SKUs')
+    }
   } catch (e) { console.warn('Sync SKUs error:', e) }
 }
 
@@ -95,7 +102,7 @@ function LoginPage({ onLogin }) {
 
   async function handleGoogleLogin() {
     if (!hasSupabase) {
-      setError('Google Sign-In is not configured yet. Use Demo View to explore.')
+      setError('Google Sign-In is not configured. Contact your administrator.')
       return
     }
     setLoading(true); setError('')
@@ -140,16 +147,7 @@ function LoginPage({ onLogin }) {
           {loading ? 'Signing in...' : 'Sign in with Google'}
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0' }}>
-          <div style={{ flex: 1, height: 1, background: '#252A3A' }} />
-          <span style={{ fontSize: 11, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>or</span>
-          <div style={{ flex: 1, height: 1, background: '#252A3A' }} />
-        </div>
 
-        <button className="google-btn" onClick={handleDemoView} style={{ background: 'transparent', border: '1px solid #252A3A' }}>
-          <Icon name="user" size={18} color="#7C3AED" />
-          Continue as Admin
-        </button>
 
         {error && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
         <p style={{ fontSize: 11, color: '#475569', marginTop: 20 }}>Google Sign-In coming soon — restricted to @homzmart.com</p>
