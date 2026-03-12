@@ -188,6 +188,8 @@ export default function App() {
   const [dbStatus, setDbStatus] = useState({ phase:'init', skuCount:0, error:null, ts:null })
   // skipSyncRef: true while we are loading from DB — prevents writing DB data back to DB
   const skipSyncRef = useRef(true)
+  // dbWasEmptyRef: true if DB had no SKUs on load — so we push local SKUs once user logs in
+  const dbWasEmptyRef = useRef(false)
 
   // Auth check — handles initial load AND OAuth redirect return
   useEffect(() => {
@@ -248,10 +250,7 @@ export default function App() {
         setSkus(sR.data)
       } else {
         setDbStatus({ phase: errs.length ? 'error' : 'empty', skuCount:0, error: errs.map(e=>e.message).join(' | ')||null, ts:new Date().toISOString() })
-        if (user) {
-          const localSkus = loadLS(LS_SKUS, [])
-          if (localSkus.length) { skipSyncRef.current = false; syncSkusToSupabase(localSkus) }
-        }
+        dbWasEmptyRef.current = true  // will push local SKUs once user is authenticated
       }
       setTimeout(() => { skipSyncRef.current = false }, 500)
       setDbLoaded(true)
@@ -263,13 +262,30 @@ export default function App() {
   }, [user])
 
   // Run on mount — public reads work without auth so Safari ITP doesn't block this
-  useEffect(() => { loadFromDB() }, [])
+  useEffect(() => {
+    loadFromDB()
+    // Reload from DB when user switches back to this tab (catches updates from other browsers)
+    const onVisible = () => { if (document.visibilityState === 'visible') loadFromDB() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   // Write SKUs to Supabase on user-initiated changes only (not on DB load echo)
+  // Also fires when user logs in — if DB was empty, push local SKUs now
   useEffect(() => {
     if (!dbLoaded || !hasSupabase || !user) return
+    if (dbWasEmptyRef.current) {
+      dbWasEmptyRef.current = false
+      const localSkus = loadLS(LS_SKUS, [])
+      if (localSkus.length) {
+        console.log('[CostIntel] DB was empty — pushing', localSkus.length, 'local SKUs')
+        skipSyncRef.current = false
+        syncSkusToSupabase(localSkus)
+      }
+      return
+    }
     if (skipSyncRef.current) {
-      skipSyncRef.current = false  // reset for next change
+      skipSyncRef.current = false
       return
     }
     syncSkusToSupabase(skus)
@@ -286,7 +302,11 @@ export default function App() {
   }, [skus, materials, accessories, commercial])
 
   function handleSaveSku(data) {
-    if (editingSku?._isNew) { if (!data.sku_code) data.sku_code = 'SKU-' + Date.now().toString(36).toUpperCase(); setSkus(p => [...p, data]); toast('SKU added') }
+    if (editingSku?._isNew) {
+      if (!data.sku_code) data.sku_code = 'SKU-' + Date.now().toString(36).toUpperCase()
+      if (skus.some(s => s.sku_code === data.sku_code)) { toast('SKU code already exists — use a unique code', 'error'); return }
+      setSkus(p => [...p, data]); toast('SKU added')
+    }
     else { setSkus(p => p.map(s => s.sku_code === editingSku.sku_code ? data : s)); toast('SKU updated') }
     setEditingSku(null)
   }

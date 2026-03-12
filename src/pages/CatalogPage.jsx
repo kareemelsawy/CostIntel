@@ -82,7 +82,18 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
         imported.push(csvRowToSku(row,catDefaults))
       }
       if(imported.length===0){toast('No valid SKU rows found in file','error');return}
-      setSkus(prev=>{const existing=new Set(prev.map(s=>s.sku_code));const newOnes=imported.filter(s=>!existing.has(s.sku_code));const updated=imported.filter(s=>existing.has(s.sku_code));const merged=prev.map(s=>{const u=updated.find(x=>x.sku_code===s.sku_code);return u||s});const result=[...merged,...newOnes];toast(`Imported ${newOnes.length} new, updated ${updated.length} SKUs`);onSyncSkus?.(result);return result})
+      setSkus(prev=>{
+        const existing=new Set(prev.map(s=>s.sku_code))
+        const duplicates=imported.filter(s=>existing.has(s.sku_code)).map(s=>s.sku_code)
+        if(duplicates.length>0){
+          toast(`Blocked — ${duplicates.length} SKU(s) already exist: ${duplicates.slice(0,3).join(', ')}${duplicates.length>3?' …':''}`, 'error')
+          return prev
+        }
+        const result=[...prev,...imported]
+        toast(`Imported ${imported.length} new SKU${imported.length!==1?'s':''}`)
+        onSyncSkus?.(result)
+        return result
+      })
     }catch(err){toast('Import failed: '+err.message,'error')}};reader.readAsText(file,{encoding:'utf-8'});e.target.value=''
   }
 
