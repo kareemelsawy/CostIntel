@@ -321,7 +321,15 @@ export default function App() {
   }, [])
 
   const skuCosts = useMemo(() => {
-    const m = {}; skus.forEach(s => { m[s.sku_code] = calculateSKUCost(skuToEngineInput(s), materials, accessories, commercial, false, engineRules?.constants) }); return m
+    const m = {}
+    skus.forEach(s => {
+      if (s._uncostable) {
+        m[s.sku_code] = { error: s._uncostable_reason || 'Material not supported', _uncostable: true }
+      } else {
+        m[s.sku_code] = calculateSKUCost(skuToEngineInput(s), materials, accessories, commercial, false, engineRules?.constants)
+      }
+    })
+    return m
   }, [skus, materials, accessories, commercial, engineRules])
 
   function handleSaveSku(data) {

@@ -289,10 +289,11 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
 
         // Material detection stats
         const detectedCount = imported.filter(s => s._detected_material).length
+        const uncostableCount = imported.filter(s => s._uncostable).length
         const detectionBreakdown = {}
         imported.forEach(s => { if (s._detected_material) { detectionBreakdown[s._detected_material] = (detectionBreakdown[s._detected_material]||0) + 1 } })
 
-        const importMeta = { warnings, skippedEmpty, unmappedHeaders, totalParsed: imported.length, detectedCount, detectionBreakdown }
+        const importMeta = { warnings, skippedEmpty, unmappedHeaders, totalParsed: imported.length, detectedCount, uncostableCount, detectionBreakdown }
 
         if(dupeSkus.length>0 && newSkus.length===0){
           setImportProgress({
@@ -464,6 +465,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                 {importProgress.dupeCount>0 && <div style={{fontSize:12,color:COLORS.amber}}>{importProgress.dupeCount} existing SKUs updated</div>}
                 {importProgress.skippedEmpty>0 && <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>{importProgress.skippedEmpty} empty rows skipped</div>}
                 {importProgress.detectedCount>0 && <div style={{fontSize:11,color:COLORS.purple,marginTop:4,fontWeight:600}}>🔍 {importProgress.detectedCount} SKUs got materials auto-assigned from descriptions</div>}
+                {importProgress.uncostableCount>0 && <div style={{fontSize:11,color:COLORS.red,marginTop:4,fontWeight:600}}>🚫 {importProgress.uncostableCount} SKUs flagged as uncostable (non-wood materials)</div>}
               </div>
               {/* Material detection breakdown */}
               {importProgress.detectionBreakdown && Object.keys(importProgress.detectionBreakdown).length > 0 && (
@@ -546,6 +548,55 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
         </div>
       )}
 
+      {/* ── FLAGGED / UNCOSTABLE SKUs ── */}
+      {(()=>{
+        const flagged = skus.filter(s => s._uncostable)
+        if (flagged.length === 0) return null
+        return (
+          <div style={{marginBottom:16,padding:'14px 18px',background:COLORS.red+'08',border:`1px solid ${COLORS.red}25`,borderRadius:12}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:flagged._expanded?12:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:14}}>🚫</span>
+                <span style={{fontSize:13,fontWeight:700,color:COLORS.red}}>
+                  {flagged.length} Uncostable SKU{flagged.length!==1?'s':''}
+                </span>
+                <span style={{fontSize:11,color:COLORS.textMuted}}>— material not supported by the costing engine (metal, glass, etc.)</span>
+              </div>
+              <Btn variant="ghost" size="sm" onClick={()=>{
+                // Toggle inline — use a class-level ref trick
+                const el = document.getElementById('flagged-skus-list')
+                if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+              }} style={{color:COLORS.textMuted,fontSize:11}}>Show/Hide</Btn>
+            </div>
+            <div id="flagged-skus-list" style={{display:'none'}}>
+              <div style={{overflowX:'auto',marginTop:8}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead><tr style={{borderBottom:`1px solid ${COLORS.red}20`}}>
+                    {['SKU','Name','Seller','Category','Detected Material','Reason'].map(h=>(
+                      <th key={h} style={{padding:'6px 10px',textAlign:'left',fontSize:10,fontWeight:700,color:COLORS.red,textTransform:'uppercase',letterSpacing:'0.05em'}}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>{flagged.slice(0,50).map(s=>(
+                    <tr key={s.sku_code} style={{borderBottom:`1px solid ${COLORS.border}`,cursor:'pointer'}}
+                      onClick={()=>setSelectedSku(s)}
+                      onMouseEnter={e=>e.currentTarget.style.background=COLORS.surfaceHover}
+                      onMouseLeave={e=>e.currentTarget.style.background=''}>
+                      <td style={{padding:'6px 10px',fontWeight:600,color:COLORS.accent,fontSize:11,fontFamily:'monospace'}}>{s.sku_code}</td>
+                      <td style={{padding:'6px 10px',color:COLORS.text,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.name}</td>
+                      <td style={{padding:'6px 10px',color:COLORS.textMuted}}>{s.seller}</td>
+                      <td style={{padding:'6px 10px'}}><span style={{fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:4,background:COLORS.purple+'18',color:COLORS.purple}}>{s.sub_category}</span></td>
+                      <td style={{padding:'6px 10px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:5,background:COLORS.red+'18',color:COLORS.red}}>{s._detected_material||'Unknown'}</span></td>
+                      <td style={{padding:'6px 10px',color:COLORS.textMuted,fontSize:11}}>{s._uncostable_reason||'Material not supported'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {flagged.length>50&&<div style={{padding:'8px 10px',fontSize:11,color:COLORS.textMuted}}>…and {flagged.length-50} more</div>}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
         <div style={{position:'relative',flex:1,minWidth:200}}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search SKU, name, seller..." style={{...iSt(),paddingLeft:34}}/>
@@ -585,18 +636,20 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                 <td style={{padding:'8px 12px',color:COLORS.text,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} onClick={()=>setSelectedSku(s)}>{s.name}</td>
                 <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}><span style={{background:COLORS.purple+'18',color:COLORS.purple,padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:600}}>{s.sub_category}</span></td>
                 <td style={{padding:'8px 12px',color:COLORS.textDim,fontSize:12,fontFamily:'monospace'}} onClick={()=>setSelectedSku(s)}>{s.width_cm}×{s.depth_cm}×{s.height_cm}</td>
-                <td style={{padding:'8px 12px',fontWeight:700,color:COLORS.text}} onClick={()=>setSelectedSku(s)}>{c?fmt(c.cogs):'—'}</td>
-                <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}><span style={{color:COLORS.accent,fontWeight:700}}>{c?fmt(c.recommended_selling_price):'—'}</span></td>
+                <td style={{padding:'8px 12px',fontWeight:700,color:s._uncostable?COLORS.red:COLORS.text}} onClick={()=>setSelectedSku(s)}>{s._uncostable?<span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:5,background:COLORS.red+'18',color:COLORS.red}}>🚫 N/A</span>:c&&!c.error?fmt(c.cogs):'—'}</td>
+                <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}><span style={{color:COLORS.accent,fontWeight:700}}>{s._uncostable?'—':c&&!c.error?fmt(c.recommended_selling_price):'—'}</span></td>
                 <td style={{padding:'8px 12px',color:COLORS.textDim}} onClick={()=>setSelectedSku(s)}>{s.selling_price?fmt(s.selling_price):'—'}</td>
                 <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}>{(()=>{
-                  if(!c||!s.selling_price)return<span style={{color:COLORS.textMuted}}>—</span>
+                  if(s._uncostable)return<span style={{color:COLORS.textMuted}}>—</span>
+                  if(!c||c.error||!s.selling_price)return<span style={{color:COLORS.textMuted}}>—</span>
                   const variance=s.selling_price-c.recommended_selling_price
                   const pct=(variance/c.recommended_selling_price*100).toFixed(1)
                   const isPos=variance>0
                   return<span style={{color:isPos?COLORS.green:COLORS.red,fontWeight:700,fontSize:12}}>{isPos?'+':''}{fmt(variance)}<span style={{fontSize:10,fontWeight:400,marginLeft:3}}>({isPos?'+':''}{pct}%)</span></span>
                 })()}</td>
                 <td style={{padding:'8px 12px'}} onClick={()=>setSelectedSku(s)}>{(()=>{
-                  if(!c||!s.selling_price||!c.recommended_selling_price)return<span style={{fontSize:10,color:COLORS.textMuted,fontWeight:600}}>—</span>
+                  if(s._uncostable)return<span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:5,background:COLORS.red+'18',color:COLORS.red}}>Uncostable</span>
+                  if(!c||c.error||!s.selling_price||!c.recommended_selling_price)return<span style={{fontSize:10,color:COLORS.textMuted,fontWeight:600}}>—</span>
                   const pct=(s.selling_price-c.recommended_selling_price)/c.recommended_selling_price
                   const st=pct<-0.05?{l:'Underpriced',cl:COLORS.red}:pct>0.05?{l:'Overpriced',cl:COLORS.amber}:{l:'Correct',cl:COLORS.green}
                   return<span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:5,background:st.cl+'18',color:st.cl}}>{st.l}</span>
