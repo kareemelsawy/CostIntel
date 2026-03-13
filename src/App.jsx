@@ -59,7 +59,8 @@ async function syncSkusToSupabase(skuList) {
   if (!hasSupabase || !supabase) return
   try {
     const rows = skuList.map(s => ({
-      sku_code: s.sku_code, name: s.name || '', image_link: s.image_link || '',
+      sku_code: s.sku_code, name: s.name || '', description: s.description || '',
+      image_link: s.image_link || '',
       seller: s.seller || '', sub_category: s.sub_category || 'Wardrobes',
       commercial_material: s.commercial_material || 'MDF',
       width_cm: s.width_cm, depth_cm: s.depth_cm, height_cm: s.height_cm,
@@ -68,7 +69,8 @@ async function syncSkusToSupabase(skuList) {
       spaces_count: s.spaces_count || 0, hangers_count: s.hangers_count || 0,
       internal_division: s.internal_division || 'NO', unit_type: s.unit_type || 'Floor Standing',
       has_mirror: !!s.has_mirror, mirror_count: s.mirror_count || 0,
-      primary_color: s.primary_color || '', handle_type: s.handle_type || 'Normal',
+      primary_color: s.primary_color || '', has_secondary_color: s.has_secondary_color || 'NO',
+      handle_type: s.handle_type || 'Normal',
       has_back_panel: s.has_back_panel || 'Close',
       body_material_id: s.body_material_id || 'MDF_17_F2',
       back_material_id: s.back_material_id || 'MDF_3.2_F1',
@@ -225,11 +227,29 @@ export default function App() {
       return
     }
     setDbStatus({ phase:'fetching', skuCount:0, error:null, ts:new Date().toISOString() })
+
+    // Helper: fetch all rows from a table, paginating in batches of 1000
+    async function fetchAll(table, filters) {
+      const PAGE = 1000
+      let all = [], from = 0, hasMore = true
+      while (hasMore) {
+        let q = supabase.from(table).select('*')
+        if (filters) Object.entries(filters).forEach(([k,v]) => { q = q.eq(k, v) })
+        q = q.range(from, from + PAGE - 1).order('created_at', { ascending: false })
+        const { data, error } = await q
+        if (error) return { data: all, error }
+        if (data) all = all.concat(data)
+        hasMore = data && data.length === PAGE
+        from += PAGE
+      }
+      return { data: all, error: null }
+    }
+
     Promise.all([
       supabase.from('materials').select('*').eq('is_active', true),
       supabase.from('accessories').select('*').eq('is_active', true),
       supabase.from('commercial_settings').select('*'),
-      supabase.from('skus').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+      fetchAll('skus', { is_active: true }),
     ]).then(([mR, aR, cR, sR]) => {
       const errs = [mR.error, aR.error, cR.error, sR.error].filter(Boolean)
       if (mR.data?.length) setMaterials(mR.data)

@@ -257,6 +257,10 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
 
         if(imported.length===0){setImportProgress(null);toast('No valid SKU rows found in file','error');return}
 
+        // Yield so the 100% progress bar renders before we move to next phase
+        setImportProgress({phase:'parsing',current:total,total,label:`Parsed ${total.toLocaleString()} rows — checking duplicates…`})
+        await new Promise(r=>setTimeout(r,100))
+
         // Check for duplicates
         const existing=new Set(skus.map(s=>s.sku_code))
         const newSkus=imported.filter(s=>!existing.has(s.sku_code))
@@ -277,6 +281,8 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
             dupeCount:dupeSkus.length, newCount:newSkus.length, imported, newSkus, dupeSkus, ...importMeta,
           })
         } else {
+          // All new — yield then finish
+          await new Promise(r=>setTimeout(r,50))
           finishImport(newSkus, [], 'add', importMeta)
         }
       }catch(err){setImportProgress(null);toast('Import failed: '+err.message,'error')}
@@ -316,6 +322,25 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
       ...(meta || {}),
     })
     toast(`✓ Import complete: ${summary.join(', ')}`)
+  }
+
+  function downloadIssuesCSV(warnings) {
+    if (!warnings || warnings.length === 0) return
+    const issueHeaders = [...CSV_COLUMNS, 'Issues']
+    // Build rows: for each warning, find the SKU in the current skus list and export it with its issues
+    const rows = warnings.map(w => {
+      const sku = skus.find(s => s.sku_code === w.sku) || { sku_code: w.sku }
+      const base = skuToCsvRow(sku)
+      const issueText = `"${w.issues.join('; ').replace(/"/g, '""')}"`
+      return base + ',' + issueText
+    })
+    const csvContent = issueHeaders.join(',') + '\n' + rows.join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'skus_with_issues.csv'
+    a.click()
+    toast(`Downloaded ${warnings.length} SKUs with issues`)
   }
 
   const cbStyle = { width: 15, height: 15, cursor: 'pointer', accentColor: COLORS.accent }
@@ -432,12 +457,22 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                   <div style={{fontSize:10,color:COLORS.textMuted}}>{importProgress.unmappedHeaders.join(', ')}</div>
                 </div>
               )}
-              <button onClick={()=>setImportProgress(null)} style={{
-                width:'100%',marginTop:16,padding:'10px 16px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,
-                background:COLORS.accent,color:'#fff',
-              }}>
-                Done
-              </button>
+              <div style={{display:'flex',gap:8,marginTop:16}}>
+                {importProgress.warnings?.length > 0 && (
+                  <button onClick={()=>downloadIssuesCSV(importProgress.warnings)} style={{
+                    flex:1,padding:'10px 16px',borderRadius:10,border:`1px solid ${COLORS.amber}40`,cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:12,
+                    background:COLORS.amber+'12',color:COLORS.amber,display:'flex',alignItems:'center',justifyContent:'center',gap:6,
+                  }}>
+                    <Icon name="download" size={13} color={COLORS.amber}/> Download {importProgress.warnings.length} SKUs with issues
+                  </button>
+                )}
+                <button onClick={()=>setImportProgress(null)} style={{
+                  flex:1,padding:'10px 16px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,
+                  background:COLORS.accent,color:'#fff',
+                }}>
+                  Done
+                </button>
+              </div>
             </>)}
           </div>
         </div>
