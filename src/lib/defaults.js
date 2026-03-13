@@ -193,4 +193,40 @@ export const DEFAULT_ENGINE_RULES = {
     'Pets House':                 { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
     'Other':                      { body:'MDF_17_F2',  back:'MDF_3.2_F1',  door:'MDF_17_F2'  },
   },
+  // --- Material Detection Rules (configurable) ---
+  // Each rule: keywords (Arabic/English, comma-separated), maps to a material_id
+  // Priority: higher number = checked first. Uncostable = material engine can't price it.
+  // The engine scans description + product name for these keywords (case-insensitive, diacritics stripped).
+  materialDetectionRules: [
+    // Solid woods (highest priority)
+    { id:'teak',     keywords:'تيك,teak',                               material_id:'TEAK',       label:'Teak (تيك)',           priority:90, uncostable:false, enabled:true },
+    { id:'azizi',    keywords:'عزيزي,عزيزى,azizi',                      material_id:'AZIZI',      label:'Azizi (عزيزي)',        priority:88, uncostable:false, enabled:true },
+    { id:'mosky',    keywords:'موسكي,موسكى,mosky',                      material_id:'MOSKY',      label:'Mosky (موسكي)',        priority:85, uncostable:false, enabled:true },
+    { id:'beech',    keywords:'زان,beech',                               material_id:'ZAN',        label:'Beech (زان)',          priority:80, uncostable:false, enabled:true, excludeWords:'خزانة,خزانه,خزائن' },
+    { id:'mahogany', keywords:'ماهوجني,ماهوجنى,mahogany',               material_id:'ZAN',        label:'Mahogany',             priority:78, uncostable:false, enabled:true },
+    { id:'swedish',  keywords:'سويدي,سويدى,swedish',                    material_id:'MOSKY',      label:'Swedish Wood (سويدي)', priority:75, uncostable:false, enabled:true },
+    { id:'natural',  keywords:'خشب طبيعي,خشب طبيعى,natural wood',      material_id:'MOSKY',      label:'Natural Wood',         priority:73, uncostable:false, enabled:true },
+    // Gloss
+    { id:'gloss',    keywords:'لامع,جلوس,glossmax,gloss',               material_id:'GLOSS_18',   label:'Gloss MDF',            priority:60, uncostable:false, enabled:true },
+    // Union board
+    { id:'union',    keywords:'اتحاد,إتحاد,union',                      material_id:'MDF_17_F2',  label:'Union Board (اتحاد)',  priority:55, uncostable:false, enabled:true },
+    // HPL / LPL
+    { id:'hpl',      keywords:'إتش بي إل,HPL,إل بي إل,LPL,مكسي إتش',  material_id:'MDF_17_F2',  label:'HPL Board',            priority:50, uncostable:false, enabled:true },
+    // Plywood
+    { id:'plywood',  keywords:'ابلكاش,ابلاكاش,plywood',                 material_id:'PLY_17MM',   label:'Plywood',              priority:48, uncostable:false, enabled:true },
+    // Chipboard
+    { id:'chip',     keywords:'كونتر,حبيبي,حبيبى,شيب بورد,chipboard,particle board', material_id:'CHIP_17_F2', label:'Chipboard (كونتر)', priority:40, uncostable:false, enabled:true },
+    // MDF (spanish / european qualifiers)
+    { id:'mdf_sp',   keywords:'اسباني,اسبانى,spanish',                  material_id:'MDF_17_F2',  label:'Spanish MDF',          priority:35, uncostable:false, enabled:true, requireAlso:'mdf' },
+    { id:'mdf_eu',   keywords:'اوروبي,اوربي,أوروبي,أوربي,اوروبى,اوربى,european', material_id:'MDF_17_F2', label:'European MDF', priority:34, uncostable:false, enabled:true },
+    // Standard MDF (lowest wood priority)
+    { id:'mdf',      keywords:'ام دي اف,ام دى اف,أم دي اف,إم دي إف,MDF', material_id:'MDF_17_F2', label:'MDF',               priority:30, uncostable:false, enabled:true },
+    { id:'hdf',      keywords:'HDF',                                    material_id:'MDF_17_F2',  label:'HDF',                  priority:29, uncostable:false, enabled:true },
+    { id:'melamine', keywords:'ميلامين,ملامين,melamine',                 material_id:'MDF_17_F2',  label:'Melamine MDF',         priority:25, uncostable:false, enabled:true },
+    // Non-wood — uncostable
+    { id:'metal',    keywords:'حديد,ستيل,steel,معدن,metal,ستانلس,ألومنيوم,aluminum', material_id:'_UNCOSTABLE', label:'Metal/Steel', priority:10, uncostable:true, enabled:true },
+    { id:'marble',   keywords:'رخام,marble,جرانيت,granite',             material_id:'_UNCOSTABLE',label:'Marble/Stone',         priority:10, uncostable:true, enabled:true },
+    { id:'glass',    keywords:'زجاج,glass',                              material_id:'_UNCOSTABLE',label:'Glass',                priority:10, uncostable:true, enabled:true },
+    { id:'plastic',  keywords:'بلاستيك,plastic,PVC',                    material_id:'_UNCOSTABLE',label:'Plastic/PVC',          priority:10, uncostable:true, enabled:true },
+  ],
 }

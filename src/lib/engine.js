@@ -332,211 +332,114 @@ export function skuToCsvRow(s) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Material Auto-Detection from Description (v2)
-// Strategy:
-// 1. First try to extract الخامة الرئيسية (primary material) — most reliable
-// 2. Fall back to keyword scanning with false-positive guards
-// 3. Handle mixed materials (e.g. counter body + beech legs → body=counter)
+// Material Auto-Detection from Description (v3 — configurable rules)
+// Uses materialDetectionRules from engineRules (editable in UI).
+// Each rule: keywords (comma-separated), material_id, priority, excludeWords, uncostable.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Extract value after a label like "الخامة الرئيسية: ام دي اف"
-function extractAfterLabel(text, labels) {
-  for (const label of labels) {
-    const re = new RegExp(label + '\\s*[:：]\\s*([^\\n,،]{2,40})', 'i')
-    const m = text.match(re)
-    if (m) return m[1].trim()
+// Strip Arabic diacritics for matching
+function stripDiacritics(t) { return t.replace(/[\u064B-\u065F\u0670]/g, '') }
+
+// Check if any keyword from a comma-separated list appears in text
+function matchesRule(text, rule) {
+  const keywords = rule.keywords.split(',').map(k => k.trim()).filter(Boolean)
+  const excludes = (rule.excludeWords || '').split(',').map(k => k.trim()).filter(Boolean)
+
+  // Remove exclude words from text first
+  let cleaned = text
+  for (const ex of excludes) {
+    cleaned = cleaned.split(ex).join('___')
   }
-  return null
-}
 
-// Check if a keyword appears as a standalone word (not inside خزانة, الضمان, etc.)
-function hasStandaloneZan(text) {
-  // Remove خزانة/خزائن/جزانة first, then check for زان
-  const cleaned = text.replace(/خزان[ةه]|خزائن|جزان[ةه]/g, '___')
-  return /(?:^|[\s,،.:]|خشب\s*)زان(?:[\s,،.:]|$)/.test(cleaned)
-}
-
-// Identify material from a short extracted phrase like "ام دي اف" or "خشب كونتر"
-function classifyPhrase(phrase) {
-  if (!phrase) return null
-  // Strip Arabic diacritics (ُ ِ َ ّ ً ٍ ٌ ْ) to normalize حُبيبي → حبيبي
-  const p = phrase.trim().replace(/[\u064B-\u065F\u0670]/g, '')
-  if (/تيك|teak/i.test(p)) return { id: 'TEAK', label: 'Teak (تيك)' }
-  if (hasStandaloneZan(p) || /beech/i.test(p)) return { id: 'ZAN', label: 'Beech (زان)' }
-  if (/ماهوجن[يى]|mahogany/i.test(p)) return { id: 'ZAN', label: 'Mahogany (ماهوجني)' }
-  if (/موسك[يى]|mosky/i.test(p)) return { id: 'MOSKY', label: 'Mosky (موسكي)' }
-  if (/عزيز[يى]|azizi/i.test(p)) return { id: 'AZIZI', label: 'Azizi (عزيزي)' }
-  if (/كونتر|حبيبي|حبيب[يى]|particle|chipboard|شيب\s*بورد/i.test(p)) return { id: 'CHIP_17_F2', label: 'Chipboard (كونتر)' }
-  if (/اتحاد|إتحاد|union/i.test(p)) return { id: 'MDF_17_F2', label: 'Union Board (اتحاد)' }
-  if (/إتش\s*بي\s*إل|HPL|إل\s*بي\s*إل|LPL|مكسي\s*إتش/i.test(p)) return { id: 'MDF_17_F2', label: 'HPL Board' }
-  if (/جلوس|glossmax/i.test(p)) return { id: 'GLOSS_18', label: 'Gloss MDF' }
-  if (/ناعم.*لامع|smooth.*gloss/i.test(p)) return { id: 'SMOOTH_WHITE', label: 'Smooth Gloss White' }
-  if (/ابلكاش|ابلاكاش|plywood/i.test(p)) return { id: 'PLY_17MM', label: 'Plywood' }
-  if (/سويد[يى]|swedish/i.test(p)) return { id: 'MOSKY', label: 'Swedish Wood (سويدي)' }
-  if (/طبيعي|طبيع[يى]|natural\s*wood/i.test(p)) return { id: 'MOSKY', label: 'Natural Wood (خشب طبيعي)' }
-  // MDF variants: أم دي اف, ام دي اف, ام دى اف, إم دي إف
-  if (/[اأإ]م\s*د[يى]\s*[اأإ]ف|mdf/i.test(p)) {
-    if (/اسبان[يى]|spanish/i.test(p)) return { id: 'MDF_17_F2', label: 'Spanish MDF' }
-    if (/اوروب[يى]|اورب[يى]|european/i.test(p)) return { id: 'MDF_17_F2', label: 'European MDF' }
-    if (/لامع/i.test(p)) return { id: 'GLOSS_18', label: 'Gloss MDF' }
-    return { id: 'MDF_17_F2', label: 'MDF' }
+  for (const kw of keywords) {
+    if (kw.length < 2) continue
+    if (cleaned.includes(kw) || cleaned.toLowerCase().includes(kw.toLowerCase())) return true
   }
-  if (/HDF/i.test(p)) return { id: 'MDF_17_F2', label: 'HDF' }
-  if (/ميلامين|melamine|ملامين/i.test(p)) return { id: 'MDF_17_F2', label: 'Melamine MDF' }
-  // Non-wood materials — cannot be costed with the panel engine
-  if (/حديد|ستيل|steel|معدن|metal|ستانلس|ألومنيوم|aluminum/i.test(p)) return { id: '_UNCOSTABLE', label: 'Metal/Steel' }
-  if (/رخام|marble|granite|جرانيت/i.test(p)) return { id: '_UNCOSTABLE', label: 'Marble/Stone' }
-  if (/زجاج|glass/i.test(p)) return { id: '_UNCOSTABLE', label: 'Glass' }
-  if (/قماش|fabric|جلد|leather/i.test(p)) return { id: '_UNCOSTABLE', label: 'Fabric/Leather' }
-  if (/بلاستيك|plastic|PVC/i.test(p)) return { id: '_UNCOSTABLE', label: 'Plastic/PVC' }
-  if (/أنابيب/i.test(p)) return { id: '_UNCOSTABLE', label: 'Pipes/Tubing' }
-  return null
+  return false
 }
 
-export function detectMaterialFromDescription(description, productName) {
-  const text = ((description || '') + ' ' + (productName || '')).trim()
-  if (!text) return null
+// Check if a keyword only appears in a "legs" context
+function isLegsOnly(text, rule) {
+  const keywords = rule.keywords.split(',').map(k => k.trim()).filter(Boolean)
+  const matched = keywords.filter(kw => text.includes(kw) || text.toLowerCase().includes(kw.toLowerCase()))
+  if (matched.length === 0) return false
 
-  // ── Step 1: Try structured extraction (most reliable) ──
-  // Look for "الخامة الرئيسية: X" or "الخامة: X"
-  const primaryLabels = ['الخامة\\s*الرئيسية', 'الخامة\\s*الأساسية', 'الخامة']
-  const primaryPhrase = extractAfterLabel(text, primaryLabels)
-  const primaryMat = classifyPhrase(primaryPhrase)
+  return matched.every(kw => {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const legPat = new RegExp('(?:أرجل|الرجل|للرجل|خامة\\s*الرجل)[\\s\\S]{0,30}' + escaped, 'i')
+    const bodyPat = new RegExp('(?:الخامة\\s*(?:الرئيسية|الأساسية)?\\s*[:：])[\\s\\S]{0,30}' + escaped, 'i')
+    return legPat.test(text) && !bodyPat.test(text)
+  })
+}
 
-  // Also check for leg material to avoid confusing legs with body
-  const legLabels = ['(?:الخامة\\s*)?(?:الرئيسية\\s*)?للرجل', 'خامة\\s*الرجل', 'أرجل']
-  const legPhrase = extractAfterLabel(text, legLabels)
-  const legMat = classifyPhrase(legPhrase)
+export function detectMaterialFromDescription(description, productName, rules) {
+  const raw = ((description || '') + ' ' + (productName || '')).trim()
+  if (!raw || raw.length < 3) return null
+  if (!rules || !rules.length) return null
 
-  // If we found a structured primary material, use it
-  if (primaryMat) {
+  const text = stripDiacritics(raw)
+
+  // Sort rules by priority (highest first)
+  const sorted = [...rules].filter(r => r.enabled !== false).sort((a, b) => (b.priority || 0) - (a.priority || 0))
+
+  const woodMatches = []
+  const uncostableMatches = []
+
+  for (const rule of sorted) {
+    if (!matchesRule(text, rule)) continue
+
+    // For expensive woods, skip if only mentioned for legs
+    if (rule.priority >= 70 && !rule.uncostable && isLegsOnly(text, rule)) continue
+
+    if (rule.uncostable) {
+      uncostableMatches.push(rule)
+    } else {
+      woodMatches.push(rule)
+    }
+  }
+
+  // Wood material wins over uncostable
+  if (woodMatches.length > 0) {
+    const best = woodMatches[0]
     return {
-      body_material_id: primaryMat.id,
-      door_material_id: primaryMat.id,
-      detected_label: primaryMat.label + (legMat && legMat.id !== primaryMat.id ? ` (legs: ${legMat.label})` : ''),
+      body_material_id: best.material_id,
+      door_material_id: best.material_id,
+      detected_label: best.label,
+      confidence: woodMatches.length === 1 ? 'high' : 'medium',
+    }
+  }
+
+  if (uncostableMatches.length > 0) {
+    const best = uncostableMatches[0]
+    return {
+      body_material_id: '_UNCOSTABLE',
+      door_material_id: '_UNCOSTABLE',
+      detected_label: best.label,
       confidence: 'high',
     }
   }
 
-  // ── Step 2: Keyword-based fallback with priority ──
-  // Strip diacritics for matching
-  const clean = text.replace(/[\u064B-\u065F\u0670]/g, '')
-  const detected = []
-
-  // Check each material keyword, respecting false-positive guards
-  if (/تيك|teak/i.test(clean)) detected.push({ id: 'TEAK', label: 'Teak (تيك)', pri: 90 })
-  if (/عزيز[يى]|azizi/i.test(clean)) detected.push({ id: 'AZIZI', label: 'Azizi (عزيزي)', pri: 87 })
-  if (/موسك[يى]|mosky/i.test(clean)) detected.push({ id: 'MOSKY', label: 'Mosky (موسكي)', pri: 85 })
-  if (/ماهوجن[يى]|mahogany/i.test(clean)) detected.push({ id: 'ZAN', label: 'Mahogany', pri: 83 })
-
-  // زان with false-positive guard (exclude خزانة)
-  if (hasStandaloneZan(clean)) {
-    const isLegsOnly = /(?:أرجل|الرجل|للرجل)[\s\S]{0,20}زان/i.test(clean)
-    if (!isLegsOnly) detected.push({ id: 'ZAN', label: 'Beech (زان)', pri: 80 })
-  }
-
-  // Chipboard — all variants
-  if (/كونتر|حبيب[يى]|particle\s*board|chipboard|شيب\s*بورد/i.test(clean))
-    detected.push({ id: 'CHIP_17_F2', label: 'Chipboard (كونتر)', pri: 40 })
-
-  if (/اتحاد|إتحاد|union\s*board/i.test(clean))
-    detected.push({ id: 'MDF_17_F2', label: 'Union Board (اتحاد)', pri: 50 })
-
-  if (/سويد[يى]|swedish/i.test(clean))
-    detected.push({ id: 'MOSKY', label: 'Swedish Wood (سويدي)', pri: 55 })
-
-  if (/خشب\s*طبيعي|خشب\s*طبيع[يى]|natural\s*wood/i.test(clean))
-    detected.push({ id: 'MOSKY', label: 'Natural Wood (خشب طبيعي)', pri: 53 })
-
-  // HPL / LPL coated boards
-  if (/إتش\s*بي\s*إل|HPL|إل\s*بي\s*إل|LPL|مكسي\s*إتش/i.test(clean))
-    detected.push({ id: 'MDF_17_F2', label: 'HPL Board', pri: 48 })
-
-  if (/جلوس.*[اأإ]م\s*د[يى]|[اأإ]م\s*د[يى].*جلوس|glossmax/i.test(clean))
-    detected.push({ id: 'GLOSS_18', label: 'Gloss MDF', pri: 60 })
-  else if (/ناعم.*لامع|smooth.*gloss/i.test(clean))
-    detected.push({ id: 'SMOOTH_WHITE', label: 'Smooth Gloss White', pri: 58 })
-  else if (/لامع.*[اأإ]م\s*د[يى]|[اأإ]م\s*د[يى].*لامع|gloss.*mdf|mdf.*gloss/i.test(clean))
-    detected.push({ id: 'GLOSS_18', label: 'Gloss MDF', pri: 57 })
-
-  if (/ابلكاش|ابلاكاش|plywood/i.test(clean))
-    detected.push({ id: 'PLY_17MM', label: 'Plywood', pri: 45 })
-
-  if (/اسبان[يى].*(?:[اأإ]م\s*د[يى]|mdf)|(?:[اأإ]م\s*د[يى]|mdf).*اسبان[يى]|spanish.*mdf/i.test(clean))
-    detected.push({ id: 'MDF_17_F2', label: 'Spanish MDF', pri: 52 })
-  if (/اوروب[يى].*(?:[اأإ]م\s*د[يى]|mdf)|(?:[اأإ]م\s*د[يى]|mdf).*(?:اوروب[يى]|اورب[يى])|european.*mdf/i.test(clean))
-    detected.push({ id: 'MDF_17_F2', label: 'European MDF', pri: 51 })
-
-  // MDF — all أ/إ/ا variants, ي/ى endings
-  if (/[اأإ]م\s*د[يى]\s*[اأإ]ف|mdf/i.test(clean))
-    detected.push({ id: 'MDF_17_F2', label: 'MDF', pri: 30 })
-
-  if (/HDF/i.test(clean))
-    detected.push({ id: 'MDF_17_F2', label: 'HDF', pri: 32 })
-
-  if (/ميلامين|melamine|ملامين/i.test(clean))
-    detected.push({ id: 'MDF_17_F2', label: 'Melamine MDF', pri: 25 })
-
-  // Non-wood materials — only flag if NO wood material was also detected
-  const hasWood = detected.length > 0
-  if (!hasWood) {
-    if (/حديد|ستيل|steel|معدن|metal|ستانلس|ألومنيوم|aluminum/i.test(clean))
-      detected.push({ id: '_UNCOSTABLE', label: 'Metal/Steel', pri: 100 })
-    if (/رخام|marble|جرانيت|granite/i.test(clean))
-      detected.push({ id: '_UNCOSTABLE', label: 'Marble/Stone', pri: 100 })
-    if (/بلاستيك|plastic|PVC/i.test(clean))
-      detected.push({ id: '_UNCOSTABLE', label: 'Plastic/PVC', pri: 100 })
-  }
-
-  if (detected.length === 0) return null
-
-  // Deduplicate by id, keep highest priority per id
-  const byId = {}
-  detected.forEach(d => { if (!byId[d.id] || d.pri > byId[d.id].pri) byId[d.id] = d })
-  const unique = Object.values(byId).sort((a, b) => b.pri - a.pri)
-
-  const best = unique[0]
-  return {
-    body_material_id: best.id,
-    door_material_id: best.id,
-    detected_label: best.label,
-    confidence: unique.length === 1 ? 'high' : 'medium',
-    all_matches: unique.map(m => m.label),
-  }
+  return null
 }
 
-// Apply auto-detection to a SKU — returns updated SKU with materials assigned
-export function autoAssignMaterials(sku, catDefaults) {
+// Apply auto-detection to a SKU
+export function autoAssignMaterials(sku, catDefaults, detectionRules) {
   const cat = sku.sub_category || 'Other'
   const def = catDefaults[cat] || catDefaults['Other']
 
-  // Start with category defaults
-  let bodyMat = def.body
-  let doorMat = def.door
-  let backMat = def.back
-  let detectedLabel = null
-  let uncostable = false
-  let uncostableReason = null
+  let bodyMat = def.body, doorMat = def.door, backMat = def.back
+  let detectedLabel = null, uncostable = false, uncostableReason = null
 
-  // Override with description-detected materials
-  const detected = detectMaterialFromDescription(sku.description, sku.name)
+  const detected = detectMaterialFromDescription(sku.description, sku.name, detectionRules)
   if (detected) {
     if (detected.body_material_id === '_UNCOSTABLE') {
-      // Non-wood material — flag as uncostable
       uncostable = true
-      uncostableReason = `Material: ${detected.detected_label} — not supported by the wood panel costing engine`
+      uncostableReason = `Material: ${detected.detected_label} — not supported by the costing engine`
       detectedLabel = detected.detected_label
     } else {
       bodyMat = detected.body_material_id
       doorMat = detected.door_material_id
       detectedLabel = detected.detected_label
-    }
-  } else {
-    // No material detected at all from description
-    const text = ((sku.description || '') + ' ' + (sku.name || '')).trim()
-    if (text.length > 10) {
-      // Has description but couldn't identify material — flag for review
-      detectedLabel = 'Unknown (needs review)'
     }
   }
 
@@ -550,4 +453,5 @@ export function autoAssignMaterials(sku, catDefaults) {
     _uncostable_reason: uncostableReason,
   }
 }
+
 

@@ -5,7 +5,7 @@ import { Icon, Btn, Card } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
 
-export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, onDeleteSkus, onSyncSkus }) {
+export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, setEditingSku, toast, catDefaults, engineRules, onDeleteSkus, onDeleteAllSkus, onSyncSkus }) {
   const [search,setSearch]=useState('')
   const [filterCat,setFilterCat]=useState('All')
   const [filterDoor,setFilterDoor]=useState('All')
@@ -17,6 +17,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   const [showFilters,setShowFilters]=useState(false)
   const [selectedCodes,setSelectedCodes]=useState(new Set())
   const [confirmDelete,setConfirmDelete]=useState(false)
+  const [confirmDeleteAll,setConfirmDeleteAll]=useState(false)
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 50
   const importRef=useRef()
@@ -78,8 +79,13 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   }
   function handleMassDelete() {
     const codes = [...selectedCodes]
+    const deletingAll = codes.length === skus.length
     setSkus(p => p.filter(s => !selectedCodes.has(s.sku_code)))
-    onDeleteSkus?.(codes)
+    if (deletingAll) {
+      onDeleteAllSkus?.()
+    } else {
+      onDeleteSkus?.(codes)
+    }
     toast(`Deleted ${codes.length} SKU${codes.length > 1 ? 's' : ''}`)
     setSelectedCodes(new Set())
     setConfirmDelete(false)
@@ -269,7 +275,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
               continue // skip rows with unparseable dimensions
             }
 
-            imported.push(autoAssignMaterials(csvRowToSku(row, catDefaults), catDefaults))
+            imported.push(autoAssignMaterials(csvRowToSku(row, catDefaults), catDefaults, engineRules?.materialDetectionRules))
           }
           const done=Math.min(i+CHUNK,total)
           setImportProgress({phase:'parsing',current:done,total,label:`Parsed ${done.toLocaleString()} of ${total.toLocaleString()} rows`})
@@ -282,10 +288,10 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
         setImportProgress({phase:'parsing',current:total,total,label:`Parsed ${total.toLocaleString()} rows — checking duplicates…`})
         await new Promise(r=>setTimeout(r,100))
 
-        // Check for duplicates
-        const existing=new Set(skus.map(s=>s.sku_code))
-        const newSkus=imported.filter(s=>!existing.has(s.sku_code))
-        const dupeSkus=imported.filter(s=>existing.has(s.sku_code))
+        // Auto-merge: new SKUs added, existing SKUs overwritten
+        const existing = new Set(skus.map(s => s.sku_code))
+        const newSkus = imported.filter(s => !existing.has(s.sku_code))
+        const updateSkus = imported.filter(s => existing.has(s.sku_code))
 
         // Material detection stats
         const detectedCount = imported.filter(s => s._detected_material).length
@@ -295,60 +301,36 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
 
         const importMeta = { warnings, skippedEmpty, unmappedHeaders, totalParsed: imported.length, detectedCount, uncostableCount, detectionBreakdown }
 
-        if(dupeSkus.length>0 && newSkus.length===0){
-          setImportProgress({
-            phase:'duplicates', current:imported.length, total:imported.length,
-            label:`All ${dupeSkus.length} SKUs already exist in catalog.`,
-            dupeCount:dupeSkus.length, newCount:0, imported, newSkus, dupeSkus, ...importMeta,
-          })
-        } else if(dupeSkus.length>0){
-          setImportProgress({
-            phase:'duplicates', current:imported.length, total:imported.length,
-            label:`${newSkus.length} new + ${dupeSkus.length} already exist.`,
-            dupeCount:dupeSkus.length, newCount:newSkus.length, imported, newSkus, dupeSkus, ...importMeta,
-          })
-        } else {
-          // All new — yield then finish
-          await new Promise(r=>setTimeout(r,50))
-          finishImport(newSkus, [], 'add', importMeta)
-        }
+        // Yield then finish
+        await new Promise(r => setTimeout(r, 50))
+        finishImport(newSkus, updateSkus, importMeta)
       }catch(err){setImportProgress(null);toast('Import failed: '+err.message,'error')}
     }
     reader.readAsText(file,'utf-8')
   }
 
-  function finishImport(newSkus, dupeSkus, mode, meta) {
+  function finishImport(newSkus, updateSkus, meta) {
     setSkus(prev => {
-      let result
-      if (mode === 'add') {
-        result = [...prev, ...newSkus]
-      } else if (mode === 'merge') {
-        const dupeMap = {}
-        dupeSkus.forEach(s => { dupeMap[s.sku_code] = s })
-        result = prev.map(s => dupeMap[s.sku_code] ? { ...s, ...dupeMap[s.sku_code] } : s)
-        result = [...result, ...newSkus]
-      } else {
-        const dupeMap = {}
-        dupeSkus.forEach(s => { dupeMap[s.sku_code] = s })
-        result = prev.map(s => dupeMap[s.sku_code] ? { ...s, ...dupeMap[s.sku_code] } : s)
-      }
-      onSyncSkus?.(result)
-      return result
+      // Merge: overwrite existing, append new
+      const updateMap = {}
+      updateSkus.forEach(s => { updateMap[s.sku_code] = s })
+      const result = prev.map(s => updateMap[s.sku_code] ? { ...s, ...updateMap[s.sku_code] } : s)
+      const final = [...result, ...newSkus]
+      onSyncSkus?.(final)
+      return final
     })
 
-    const totalAffected = newSkus.length + (mode !== 'add' ? dupeSkus.length : 0)
     const summary = []
     if (newSkus.length > 0) summary.push(`${newSkus.length} added`)
-    if (dupeSkus.length > 0 && mode !== 'add') summary.push(`${dupeSkus.length} updated`)
-    if (dupeSkus.length > 0 && mode === 'add') summary.push(`${dupeSkus.length} skipped`)
+    if (updateSkus.length > 0) summary.push(`${updateSkus.length} updated`)
 
     setImportProgress({
-      phase: 'done', current: totalAffected, total: totalAffected,
-      label: summary.join(', '),
-      newCount: newSkus.length, dupeCount: mode !== 'add' ? dupeSkus.length : 0,
+      phase: 'done', current: newSkus.length + updateSkus.length, total: newSkus.length + updateSkus.length,
+      label: summary.join(', ') || 'No changes',
+      newCount: newSkus.length, dupeCount: updateSkus.length,
       ...(meta || {}),
     })
-    toast(`✓ Import complete: ${summary.join(', ')}`)
+    toast(`✓ Import complete: ${summary.join(', ') || 'No changes'}`)
   }
 
   function downloadIssuesCSV(warnings) {
@@ -393,66 +375,6 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                   <div style={{fontSize:11,color:COLORS.textMuted,textAlign:'right'}}>{Math.round((importProgress.current/importProgress.total)*100)}%</div>
                 </>
               )}
-            </>)}
-
-            {/* DUPLICATES — ask user what to do */}
-            {importProgress.phase==='duplicates' && (<>
-              <div style={{fontSize:15,fontWeight:700,color:COLORS.amber,marginBottom:8}}>⚠ Duplicate SKUs Found</div>
-              <div style={{fontSize:13,color:COLORS.text,marginBottom:6,lineHeight:1.6}}>{importProgress.label}</div>
-              <div style={{fontSize:12,color:COLORS.textMuted,marginBottom:12,lineHeight:1.5}}>
-                {importProgress.newCount>0 && <div style={{marginBottom:4}}><span style={{color:COLORS.green,fontWeight:700}}>{importProgress.newCount}</span> new SKUs ready to add</div>}
-                <div><span style={{color:COLORS.amber,fontWeight:700}}>{importProgress.dupeCount}</span> SKUs already exist in catalog</div>
-              </div>
-              {/* Show parsing warnings if any */}
-              {importProgress.warnings?.length > 0 && (
-                <div style={{marginBottom:12,padding:'8px 12px',background:COLORS.red+'10',border:`1px solid ${COLORS.red}25`,borderRadius:8,maxHeight:120,overflowY:'auto'}}>
-                  <div style={{fontSize:11,fontWeight:700,color:COLORS.red,marginBottom:4}}>{importProgress.warnings.length} row{importProgress.warnings.length!==1?'s':''} with issues:</div>
-                  {importProgress.warnings.slice(0,10).map((w,i)=>(
-                    <div key={i} style={{fontSize:10,color:COLORS.textMuted,lineHeight:1.5}}>
-                      <span style={{color:COLORS.text,fontWeight:600}}>Row {w.rowNum}</span> ({w.sku}): {w.issues.join('; ')}
-                    </div>
-                  ))}
-                  {importProgress.warnings.length>10 && <div style={{fontSize:10,color:COLORS.textMuted,marginTop:4}}>…and {importProgress.warnings.length-10} more</div>}
-                </div>
-              )}
-              {importProgress.unmappedHeaders?.length > 0 && (
-                <div style={{marginBottom:12,padding:'8px 12px',background:COLORS.amber+'10',border:`1px solid ${COLORS.amber}25`,borderRadius:8}}>
-                  <div style={{fontSize:11,fontWeight:700,color:COLORS.amber,marginBottom:2}}>Unmapped columns (ignored):</div>
-                  <div style={{fontSize:10,color:COLORS.textMuted}}>{importProgress.unmappedHeaders.join(', ')}</div>
-                </div>
-              )}
-              <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                {importProgress.newCount>0 && (
-                  <button onClick={()=>finishImport(importProgress.newSkus,importProgress.dupeSkus,'merge',{warnings:importProgress.warnings,skippedEmpty:importProgress.skippedEmpty,unmappedHeaders:importProgress.unmappedHeaders,totalParsed:importProgress.totalParsed})} style={{
-                    padding:'10px 16px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,
-                    background:COLORS.accent,color:'#fff',textAlign:'left',
-                  }}>
-                    Add new + Update existing ({importProgress.newCount + importProgress.dupeCount} total)
-                  </button>
-                )}
-                {importProgress.newCount>0 && (
-                  <button onClick={()=>finishImport(importProgress.newSkus,[],'add',{warnings:importProgress.warnings,skippedEmpty:importProgress.skippedEmpty,unmappedHeaders:importProgress.unmappedHeaders,totalParsed:importProgress.totalParsed})} style={{
-                    padding:'10px 16px',borderRadius:10,border:`1px solid ${COLORS.border}`,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:13,
-                    background:COLORS.surface,color:COLORS.text,textAlign:'left',
-                  }}>
-                    Add only new ({importProgress.newCount}), skip duplicates
-                  </button>
-                )}
-                {importProgress.dupeCount>0 && (
-                  <button onClick={()=>finishImport([],importProgress.dupeSkus,'replace',{warnings:importProgress.warnings,skippedEmpty:importProgress.skippedEmpty,unmappedHeaders:importProgress.unmappedHeaders,totalParsed:importProgress.totalParsed})} style={{
-                    padding:'10px 16px',borderRadius:10,border:`1px solid ${COLORS.amber}40`,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:13,
-                    background:COLORS.amber+'12',color:COLORS.amber,textAlign:'left',
-                  }}>
-                    Update existing only ({importProgress.dupeCount})
-                  </button>
-                )}
-                <button onClick={()=>setImportProgress(null)} style={{
-                  padding:'10px 16px',borderRadius:10,border:`1px solid ${COLORS.border}`,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:13,
-                  background:'transparent',color:COLORS.textMuted,textAlign:'left',
-                }}>
-                  Cancel — don't import anything
-                </button>
-              </div>
             </>)}
 
             {/* DONE — confirmation with warnings summary */}
@@ -527,6 +449,16 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
           <Btn variant="secondary" size="sm" onClick={downloadTemplate}><Icon name="fileText" size={14}/> Template</Btn>
           <Btn variant="secondary" size="sm" onClick={()=>importRef.current?.click()}><Icon name="upload" size={14}/> Upload CSV</Btn>
           <Btn variant="secondary" size="sm" onClick={exportCSV}><Icon name="download" size={14}/> Export</Btn>
+          {skus.length > 0 && !confirmDeleteAll && (
+            <Btn variant="secondary" size="sm" onClick={()=>setConfirmDeleteAll(true)} style={{color:COLORS.red,borderColor:COLORS.red+'40'}}><Icon name="trash" size={14}/> Delete All</Btn>
+          )}
+          {confirmDeleteAll && (
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,color:COLORS.red,fontWeight:600}}>Delete all {skus.length} SKUs?</span>
+              <Btn size="sm" onClick={()=>{onDeleteAllSkus?.();setSkus([]);setConfirmDeleteAll(false);toast(`Deleted all ${skus.length} SKUs`)}} style={{background:COLORS.red,borderColor:COLORS.red,color:'#fff'}}>Yes, delete all</Btn>
+              <Btn variant="ghost" size="sm" onClick={()=>setConfirmDeleteAll(false)}>Cancel</Btn>
+            </div>
+          )}
           <Btn size="sm" onClick={()=>{const def=catDefaults['Wardrobes'];setEditingSku({sku_code:'',name:'',image_link:'',seller:'',sub_category:'Wardrobes',commercial_material:'MDF',width_cm:100,depth_cm:60,height_cm:210,door_type:'Hinged',doors_count:2,drawers_count:0,shelves_count:4,spaces_count:2,hangers_count:1,internal_division:'NO',unit_type:'Floor Standing',has_mirror:false,mirror_count:0,primary_color:'',handle_type:'Normal',has_back_panel:'Close',body_material_id:def.body,back_material_id:def.back,door_material_id:def.door,selling_price:0,_isNew:true})}}><Icon name="plus" size={14}/> Add SKU</Btn>
         </div>
       </div>

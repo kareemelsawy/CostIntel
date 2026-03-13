@@ -261,7 +261,7 @@ function CategoryDefaultsTable({ categoryDefaults, materials, onChange }) {
 // ═════════════════════════════════════════════════════════════════════════════
 export default function EnginePage({ engineRules, setEngineRules, materials, accessories, toast }) {
   const [sections, setSections] = useState({
-    constants: true, categories: false, panels: false, accessories: false, reference: false,
+    constants: true, categories: false, panels: false, accessories: false, detection: false, reference: false,
   })
   const toggle = (s) => setSections(p => ({ ...p, [s]: !p[s] }))
 
@@ -485,7 +485,69 @@ export default function EnginePage({ engineRules, setEngineRules, materials, acc
         />
       </SectionCard>
 
-      {/* ═══ 5. FORMULA REFERENCE ═══ */}
+      {/* ═══ 5b. MATERIAL DETECTION RULES ═══ */}
+      <SectionCard
+        title="Material Detection Rules" icon="🔍"
+        badge={`${(engineRules.materialDetectionRules||[]).filter(r=>r.enabled!==false).length} active`}
+        expanded={sections.detection} onToggle={() => toggle('detection')}
+      >
+        <div style={{fontSize:12,color:COLORS.textMuted,marginBottom:14,lineHeight:1.6}}>
+          When importing CSV, each SKU's description and name are scanned for these keywords to auto-assign the body/door material.
+          Higher priority rules are checked first. Keywords are comma-separated (Arabic or English). The "Exclude Words" column prevents false positives
+          (e.g. excluding "خزانة" prevents wardrobe names from matching the "زان" beech rule).
+        </div>
+        <div style={{overflowX:'auto',marginBottom:12}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead><tr style={{borderBottom:`2px solid ${COLORS.border}`}}>
+              {['','Label','Keywords (comma-separated)','Maps To','Pri','Exclude Words',''].map((h,i)=>(
+                <th key={i} style={{padding:'8px 8px',textAlign:'left',fontSize:10,fontWeight:700,color:COLORS.textMuted,textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap'}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>{(engineRules.materialDetectionRules||[]).map((rule,i)=>{
+              const update = (field, val) => {
+                const rules = [...(engineRules.materialDetectionRules||[])]
+                rules[i] = { ...rules[i], [field]: val }
+                setEngineRules(p => ({ ...p, materialDetectionRules: rules }))
+              }
+              const isUnc = rule.material_id === '_UNCOSTABLE'
+              return <tr key={rule.id||i} style={{borderBottom:`1px solid ${COLORS.border}`,opacity:rule.enabled===false?0.35:1,background:isUnc?COLORS.red+'06':''}}>
+                <td style={{padding:'5px 8px',width:30}}><input type="checkbox" checked={rule.enabled!==false} onChange={e=>update('enabled',e.target.checked)} style={{cursor:'pointer',accentColor:COLORS.accent}}/></td>
+                <td style={{padding:'5px 8px'}}><input value={rule.label||''} onChange={e=>update('label',e.target.value)} style={{...iSt(),width:130,fontSize:11}}/></td>
+                <td style={{padding:'5px 8px'}}><input value={rule.keywords||''} onChange={e=>update('keywords',e.target.value)} style={{...iSt(),minWidth:180,fontSize:11,direction:'rtl'}} title={rule.keywords}/></td>
+                <td style={{padding:'5px 8px'}}>
+                  <select value={rule.material_id||''} onChange={e=>{update('material_id',e.target.value);if(e.target.value==='_UNCOSTABLE')update('uncostable',true);else update('uncostable',false)}} style={{...iSt(),width:140,fontSize:11,cursor:'pointer',color:isUnc?COLORS.red:COLORS.text}}>
+                    <option value="_UNCOSTABLE">⛔ Uncostable</option>
+                    {materials.map(m=><option key={m.material_id} value={m.material_id}>{m.name} ({m.material_id})</option>)}
+                  </select>
+                </td>
+                <td style={{padding:'5px 8px'}}><input type="number" value={rule.priority||0} onChange={e=>update('priority',parseInt(e.target.value)||0)} style={{...iSt(),width:50,fontSize:11,textAlign:'center'}}/></td>
+                <td style={{padding:'5px 8px'}}><input value={rule.excludeWords||''} onChange={e=>update('excludeWords',e.target.value)} style={{...iSt(),width:120,fontSize:11,direction:'rtl'}} placeholder="خزانة,خزائن"/></td>
+                <td style={{padding:'5px 8px',width:28}}>
+                  <button onClick={()=>{
+                    const rules = (engineRules.materialDetectionRules||[]).filter((_,j)=>j!==i)
+                    setEngineRules(p => ({ ...p, materialDetectionRules: rules }))
+                  }} style={{background:'none',border:'none',cursor:'pointer',color:COLORS.red,padding:2}}><Icon name="trash" size={13}/></button>
+                </td>
+              </tr>
+            })}</tbody>
+          </table>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <Btn variant="secondary" size="sm" onClick={()=>{
+            const rules = [...(engineRules.materialDetectionRules||[])]
+            rules.push({ id:'rule_'+Date.now(), keywords:'', material_id:'MDF_17_F2', label:'New Rule', priority:20, uncostable:false, enabled:true, excludeWords:'' })
+            setEngineRules(p => ({ ...p, materialDetectionRules: rules }))
+          }}><Icon name="plus" size={12}/> Add Rule</Btn>
+          <Btn variant="ghost" size="sm" onClick={()=>{
+            if (confirm('Reset all detection rules to defaults?')) {
+              setEngineRules(p => ({ ...p, materialDetectionRules: DEFAULT_ENGINE_RULES.materialDetectionRules }))
+              toast('Detection rules reset to defaults')
+            }
+          }}>Reset to Defaults</Btn>
+        </div>
+      </SectionCard>
+
+      {/* ═══ 6. FORMULA REFERENCE ═══ */}
       <SectionCard
         title="Cost Waterfall Reference" icon="📐"
         expanded={sections.reference} onToggle={() => toggle('reference')}

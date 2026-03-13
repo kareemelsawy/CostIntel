@@ -96,12 +96,26 @@ async function syncSkusToSupabase(skuList) {
   } catch (e) { console.warn('Sync SKUs error:', e) }
 }
 
-// Soft-delete SKUs from Supabase by setting is_active = false
+// Soft-delete SKUs from Supabase by setting is_active = false (batched)
 async function deleteSkusFromSupabase(skuCodes) {
   if (!hasSupabase || !supabase || !skuCodes.length) return
   try {
-    await supabase.from('skus').update({ is_active: false }).in('sku_code', skuCodes)
+    const BATCH = 500
+    for (let i = 0; i < skuCodes.length; i += BATCH) {
+      const batch = skuCodes.slice(i, i + BATCH)
+      const { error } = await supabase.from('skus').update({ is_active: false }).in('sku_code', batch)
+      if (error) console.error('[CostIntel] Delete batch error:', error)
+    }
   } catch (e) { console.warn('Delete SKUs error:', e) }
+}
+
+// Delete ALL active SKUs from Supabase in one query
+async function deleteAllSkusFromSupabase() {
+  if (!hasSupabase || !supabase) return
+  try {
+    const { error } = await supabase.from('skus').update({ is_active: false }).eq('is_active', true)
+    if (error) console.error('[CostIntel] Delete all error:', error)
+  } catch (e) { console.warn('Delete all SKUs error:', e) }
 }
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
@@ -437,7 +451,7 @@ export default function App() {
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {view === 'analytics' && <MemoAnalytics skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
-            {view === 'catalog' && <MemoCatalog skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} onSyncSkus={syncSkusToSupabase} />}
+            {view === 'catalog' && <MemoCatalog skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} engineRules={engineRules} onDeleteSkus={deleteSkusFromSupabase} onDeleteAllSkus={deleteAllSkusFromSupabase} onSyncSkus={syncSkusToSupabase} />}
             {view === 'sellers' && <MemoSellers skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} />}
             {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} engineRules={engineRules} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
             {view === 'engine' && <MemoEngine engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
