@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { COLORS, CATEGORIES, DOOR_TYPES, CSV_COLUMNS } from '../lib/constants'
-import { fmt, fmtP, csvRowToSku, skuToCsvRow } from '../lib/engine'
+import { fmt, fmtP, csvRowToSku, skuToCsvRow, autoAssignMaterials } from '../lib/engine'
 import { Icon, Btn, Card } from '../components/UI'
 
 const iSt=()=>({width:'100%',background:COLORS.inputBg,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:'8px 12px',color:COLORS.text,fontSize:13,outline:'none',lineHeight:1.5,fontFamily:'inherit'})
@@ -17,11 +17,14 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   const [showFilters,setShowFilters]=useState(false)
   const [selectedCodes,setSelectedCodes]=useState(new Set())
   const [confirmDelete,setConfirmDelete]=useState(false)
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 50
   const importRef=useRef()
 
   const sellers = useMemo(()=>[...new Set(skus.map(s=>s.seller).filter(Boolean))].sort(),[skus])
 
   const filtered = useMemo(() => {
+    setPage(0) // reset to first page on any filter change
     let list = skus
     if (filterCat!=='All') list=list.filter(s=>s.sub_category===filterCat)
     if (filterDoor!=='All') list=list.filter(s=>s.door_type===filterDoor)
@@ -32,11 +35,29 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
     if (search) { const q=search.toLowerCase(); list=list.filter(s=>s.sku_code?.toLowerCase().includes(q)||s.name?.toLowerCase().includes(q)||s.seller?.toLowerCase().includes(q)) }
     return [...list].sort((a,b)=>{
       const ca=skuCosts[a.sku_code],cb=skuCosts[b.sku_code]; let va,vb
-      switch(sortBy){case 'cost':va=ca?.cogs||0;vb=cb?.cogs||0;break;case 'margin':va=ca?.commercial?.net_margin_percent||0;vb=cb?.commercial?.net_margin_percent||0;break;case 'name':va=a.name||'';vb=b.name||'';break;default:va=a.sku_code;vb=b.sku_code}
+      switch(sortBy){
+        case 'cost':va=ca?.cogs||0;vb=cb?.cogs||0;break
+        case 'name':va=a.name||'';vb=b.name||'';break
+        case 'sub_category':va=a.sub_category||'';vb=b.sub_category||'';break
+        case 'rec':va=ca?.recommended_selling_price||0;vb=cb?.recommended_selling_price||0;break
+        case 'cur':va=a.selling_price||0;vb=b.selling_price||0;break
+        case 'var':
+          va=(a.selling_price>0&&ca?.recommended_selling_price>0)?a.selling_price-ca.recommended_selling_price:0
+          vb=(b.selling_price>0&&cb?.recommended_selling_price>0)?b.selling_price-cb.recommended_selling_price:0;break
+        case 'status':
+          const sa=a.selling_price>0&&ca?.recommended_selling_price>0?(a.selling_price-ca.recommended_selling_price)/ca.recommended_selling_price:99
+          const sb=b.selling_price>0&&cb?.recommended_selling_price>0?(b.selling_price-cb.recommended_selling_price)/cb.recommended_selling_price:99
+          va=sa<-0.05?0:sa>0.05?2:1;vb=sb<-0.05?0:sb>0.05?2:1;break
+        case 'dims':va=(a.width_cm||0)*(a.depth_cm||0)*(a.height_cm||0);vb=(b.width_cm||0)*(b.depth_cm||0)*(b.height_cm||0);break
+        default:va=a.sku_code;vb=b.sku_code
+      }
       if(typeof va==='string') return sortDir==='asc'?va.localeCompare(vb):vb.localeCompare(va)
       return sortDir==='asc'?va-vb:vb-va
     })
   },[skus,filterCat,filterDoor,filterSeller,filterMargin,search,sortBy,sortDir,skuCosts])
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const pageSlice = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   const activeFilters = [filterCat,filterDoor,filterSeller,filterMargin].filter(f=>f!=='All').length
   const toggleSort=(c)=>{if(sortBy===c)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortBy(c);setSortDir('asc')}}
@@ -248,7 +269,7 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
               continue // skip rows with unparseable dimensions
             }
 
-            imported.push(csvRowToSku(row, catDefaults))
+            imported.push(autoAssignMaterials(csvRowToSku(row, catDefaults), catDefaults))
           }
           const done=Math.min(i+CHUNK,total)
           setImportProgress({phase:'parsing',current:done,total,label:`Parsed ${done.toLocaleString()} of ${total.toLocaleString()} rows`})
@@ -266,7 +287,12 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
         const newSkus=imported.filter(s=>!existing.has(s.sku_code))
         const dupeSkus=imported.filter(s=>existing.has(s.sku_code))
 
-        const importMeta = { warnings, skippedEmpty, unmappedHeaders, totalParsed: imported.length }
+        // Material detection stats
+        const detectedCount = imported.filter(s => s._detected_material).length
+        const detectionBreakdown = {}
+        imported.forEach(s => { if (s._detected_material) { detectionBreakdown[s._detected_material] = (detectionBreakdown[s._detected_material]||0) + 1 } })
+
+        const importMeta = { warnings, skippedEmpty, unmappedHeaders, totalParsed: imported.length, detectedCount, detectionBreakdown }
 
         if(dupeSkus.length>0 && newSkus.length===0){
           setImportProgress({
@@ -437,7 +463,19 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
                 {importProgress.newCount>0 && <div style={{fontSize:12,color:COLORS.green}}>+{importProgress.newCount} new SKUs added</div>}
                 {importProgress.dupeCount>0 && <div style={{fontSize:12,color:COLORS.amber}}>{importProgress.dupeCount} existing SKUs updated</div>}
                 {importProgress.skippedEmpty>0 && <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>{importProgress.skippedEmpty} empty rows skipped</div>}
+                {importProgress.detectedCount>0 && <div style={{fontSize:11,color:COLORS.purple,marginTop:4,fontWeight:600}}>🔍 {importProgress.detectedCount} SKUs got materials auto-assigned from descriptions</div>}
               </div>
+              {/* Material detection breakdown */}
+              {importProgress.detectionBreakdown && Object.keys(importProgress.detectionBreakdown).length > 0 && (
+                <div style={{marginTop:12,padding:'10px 14px',background:COLORS.purple+'10',border:`1px solid ${COLORS.purple}25`,borderRadius:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:COLORS.purple,marginBottom:6}}>Materials detected from descriptions:</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'4px 12px'}}>
+                    {Object.entries(importProgress.detectionBreakdown).sort((a,b)=>b[1]-a[1]).map(([mat,count])=>(
+                      <span key={mat} style={{fontSize:10,color:COLORS.textDim}}><strong style={{color:COLORS.text}}>{count}</strong> × {mat}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Warnings summary */}
               {importProgress.warnings?.length > 0 && (
                 <div style={{marginTop:12,padding:'10px 14px',background:COLORS.amber+'10',border:`1px solid ${COLORS.amber}25`,borderRadius:8,maxHeight:160,overflowY:'auto'}}>
@@ -531,11 +569,11 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
               <th style={{padding:'10px 12px',width:36}}>
                 <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} style={cbStyle} title="Select all visible"/>
               </th>
-              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'_dims',l:'W×D×H (cm)'},{c:'cost',l:'COGS (EGP)'},{c:'_rec',l:'Rec. Price'},{c:'_cur',l:'Current Price'},{c:'_var',l:'Variance'},{c:'_status',l:'Status'},{c:'_act',l:''}].map(h=>(
-                <th key={h.c} style={{padding:'10px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>{!h.c.startsWith('_')?<SH col={h.c}>{h.l}</SH>:h.l}</th>
+              {[{c:'_img',l:''},{c:'sku_code',l:'SKU'},{c:'name',l:'Name'},{c:'sub_category',l:'Category'},{c:'dims',l:'W×D×H'},{c:'cost',l:'COGS'},{c:'rec',l:'Rec. Price'},{c:'cur',l:'Selling Price'},{c:'var',l:'Variance'},{c:'status',l:'Status'},{c:'_act',l:''}].map(h=>(
+                <th key={h.c} style={{padding:'10px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:COLORS.textMuted,letterSpacing:'0.06em',textTransform:'uppercase',whiteSpace:'nowrap'}}>{h.c.startsWith('_')?h.l:<SH col={h.c}>{h.l}</SH>}</th>
               ))}
             </tr></thead>
-            <tbody>{filtered.map(s=>{
+            <tbody>{pageSlice.map(s=>{
               const c=skuCosts[s.sku_code]
               const isSelected = selectedCodes.has(s.sku_code)
               return <tr key={s.sku_code} style={{borderBottom:`1px solid ${COLORS.border}`,cursor:'pointer',transition:'background 0.1s',background:isSelected?COLORS.accent+'12':''}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background=COLORS.surfaceHover}} onMouseLeave={e=>{e.currentTarget.style.background=isSelected?COLORS.accent+'12':''}}>
@@ -572,6 +610,24 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
           </table>
         </div>
         {filtered.length===0&&<div style={{padding:40,textAlign:'center',color:COLORS.textMuted}}>No SKUs match</div>}
+        {totalPages > 1 && (
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderTop:`1px solid ${COLORS.border}`}}>
+            <span style={{fontSize:12,color:COLORS.textMuted}}>
+              Showing {page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} of {filtered.length.toLocaleString()}
+            </span>
+            <div style={{display:'flex',gap:4}}>
+              <button onClick={()=>setPage(0)} disabled={page===0}
+                style={{padding:'5px 10px',borderRadius:6,border:`1px solid ${COLORS.border}`,background:COLORS.surface,color:page===0?COLORS.textMuted:COLORS.text,cursor:page===0?'default':'pointer',fontSize:12,fontFamily:'inherit',fontWeight:600}}>«</button>
+              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}
+                style={{padding:'5px 10px',borderRadius:6,border:`1px solid ${COLORS.border}`,background:COLORS.surface,color:page===0?COLORS.textMuted:COLORS.text,cursor:page===0?'default':'pointer',fontSize:12,fontFamily:'inherit',fontWeight:600}}>‹ Prev</button>
+              <span style={{padding:'5px 12px',fontSize:12,color:COLORS.text,fontWeight:700}}>{page+1} / {totalPages}</span>
+              <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page>=totalPages-1}
+                style={{padding:'5px 10px',borderRadius:6,border:`1px solid ${COLORS.border}`,background:COLORS.surface,color:page>=totalPages-1?COLORS.textMuted:COLORS.text,cursor:page>=totalPages-1?'default':'pointer',fontSize:12,fontFamily:'inherit',fontWeight:600}}>Next ›</button>
+              <button onClick={()=>setPage(totalPages-1)} disabled={page>=totalPages-1}
+                style={{padding:'5px 10px',borderRadius:6,border:`1px solid ${COLORS.border}`,background:COLORS.surface,color:page>=totalPages-1?COLORS.textMuted:COLORS.text,cursor:page>=totalPages-1?'default':'pointer',fontSize:12,fontFamily:'inherit',fontWeight:600}}>»</button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   )

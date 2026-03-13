@@ -330,3 +330,83 @@ export function skuToCsvRow(s) {
     s.doors_count, s.selling_price||0,
   ].join(',')
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Material Auto-Detection from Description
+// Scans Arabic + English text for material keywords, returns best-match material IDs
+// Priority: specific woods > chipboard > gloss > standard MDF (fallback = category default)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const MAT_PATTERNS = [
+  // Solid woods (highest priority — most expensive)
+  { pattern: /زان|beech|خشب\s*زان/i, body: 'ZAN', door: 'ZAN', label: 'Beech (زان)', priority: 90 },
+  { pattern: /موسكي|mosky/i, body: 'MOSKY', door: 'MOSKY', label: 'Mosky (موسكي)', priority: 85 },
+  { pattern: /تيك|teak/i, body: 'TEAK', door: 'TEAK', label: 'Teak (تيك)', priority: 88 },
+
+  // Chipboard / Particle board
+  { pattern: /كونتر|counter|particle\s*board|خشب\s*حبيبي|chipboard/i, body: 'CHIP_17_F2', door: 'CHIP_17_F2', label: 'Chipboard (كونتر)', priority: 40 },
+
+  // Gloss MDF
+  { pattern: /لامع.*ام\s*دي|جلوس.*ام\s*دي|gloss.*mdf|mdf.*gloss|لامع|glossmax/i, body: 'GLOSS_18', door: 'GLOSS_18', label: 'Gloss MDF', priority: 60 },
+  { pattern: /ناعم.*لامع|smooth.*gloss/i, body: 'SMOOTH_WHITE', door: 'SMOOTH_WHITE', label: 'Smooth Gloss White', priority: 58 },
+
+  // MDF with qualifiers
+  { pattern: /اسباني.*ام\s*دي|ام\s*دي.*اسباني|spanish.*mdf|mdf.*spanish/i, body: 'MDF_17_F2', door: 'MDF_17_F2', label: 'Spanish MDF', priority: 52 },
+  { pattern: /اوروبي.*ام\s*دي|ام\s*دي.*اوروبي|اوربي.*ام\s*دي|ام\s*دي.*اوربي|european.*mdf/i, body: 'MDF_17_F2', door: 'MDF_17_F2', label: 'European MDF', priority: 51 },
+
+  // Plywood
+  { pattern: /ابلكاش|ابلاكاش|plywood/i, body: 'PLY_17MM', door: 'PLY_17MM', label: 'Plywood', priority: 45 },
+
+  // Standard MDF (lowest priority — most common)
+  { pattern: /ام\s*دي\s*اف|ام\s*دى\s*اف|إم\s*دي\s*إف|mdf/i, body: 'MDF_17_F2', door: 'MDF_17_F2', label: 'MDF', priority: 30 },
+
+  // Melamine (surface treatment, not a base material — but if only keyword, default to MDF)
+  { pattern: /ميلامين|melamine/i, body: 'MDF_17_F2', door: 'MDF_17_F2', label: 'Melamine MDF', priority: 25 },
+]
+
+export function detectMaterialFromDescription(description, productName) {
+  const text = ((description || '') + ' ' + (productName || '')).trim()
+  if (!text) return null
+
+  const matches = MAT_PATTERNS.filter(p => p.pattern.test(text))
+  if (matches.length === 0) return null
+
+  // Return highest priority match
+  const best = matches.sort((a, b) => b.priority - a.priority)[0]
+  return {
+    body_material_id: best.body,
+    door_material_id: best.door,
+    detected_label: best.label,
+    confidence: matches.length === 1 ? 'high' : 'medium',
+    all_matches: matches.map(m => m.label),
+  }
+}
+
+// Apply auto-detection to a SKU — returns updated SKU with materials assigned
+export function autoAssignMaterials(sku, catDefaults) {
+  const cat = sku.sub_category || 'Other'
+  const def = catDefaults[cat] || catDefaults['Other']
+
+  // Start with category defaults
+  let bodyMat = def.body
+  let doorMat = def.door
+  let backMat = def.back
+  let detectedLabel = null
+
+  // Override with description-detected materials
+  const detected = detectMaterialFromDescription(sku.description, sku.name)
+  if (detected) {
+    bodyMat = detected.body_material_id
+    doorMat = detected.door_material_id
+    detectedLabel = detected.detected_label
+  }
+
+  return {
+    ...sku,
+    body_material_id: bodyMat,
+    door_material_id: doorMat,
+    back_material_id: backMat,
+    _detected_material: detectedLabel,
+  }
+}
+

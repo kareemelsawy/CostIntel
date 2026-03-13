@@ -30,6 +30,19 @@ const SM = {
 export default function AnalyticsPage({ skus, skuCosts, setSelectedSku, userName }) {
   const greeting = getGreeting(userName || 'there')
   const [varSort, setVarSort] = useState('worst')
+  const [catSort, setCatSort] = useState({ col: 'avgVar', dir: 'asc' })
+  const [sellerSort, setSellerSort] = useState({ col: 'avgVar', dir: 'asc' })
+
+  // Sortable header helper
+  const TH = ({ sort, setSort, col, children, align }) => {
+    const active = sort.col === col
+    return (
+      <th onClick={() => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' })}
+        style={{ padding: '8px 10px', textAlign: align || 'right', fontSize: 10, fontWeight: 700, color: active ? COLORS.accent : COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+        {children} {active && <Icon name={sort.dir === 'asc' ? 'arrowUp' : 'arrowDown'} size={10} color={COLORS.accent} style={{ verticalAlign: 'middle' }}/>}
+      </th>
+    )
+  }
 
   const stats = useMemo(() => {
     const items = skus.map(s => ({ sku: s, cost: skuCosts[s.sku_code] })).filter(x => x.cost && !x.cost.error)
@@ -182,17 +195,26 @@ export default function AnalyticsPage({ skus, skuCosts, setSelectedSku, userName
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr style={{ borderBottom: `1px solid ${COLORS.border}`, position: 'sticky', top: 0, background: COLORS.surface }}>
-                {['Category', 'SKUs', 'Health', 'Avg Var %'].map(h => (
-                  <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Category' ? 'left' : 'right', fontSize: 10, fontWeight: 700, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                ))}
+                <TH sort={catSort} setSort={setCatSort} col="cat" align="left">Category</TH>
+                <TH sort={catSort} setSort={setCatSort} col="count">SKUs</TH>
+                <TH sort={catSort} setSort={setCatSort} col="health">Health</TH>
+                <TH sort={catSort} setSort={setCatSort} col="avgVar">Avg Var %</TH>
               </tr></thead>
-              <tbody>{Object.entries(stats.byCat).sort((a, b) => {
-                const aAvg = a[1].varPcts.length ? a[1].varPcts.reduce((s, v) => s + v, 0) / a[1].varPcts.length : 999
-                const bAvg = b[1].varPcts.length ? b[1].varPcts.reduce((s, v) => s + v, 0) / b[1].varPcts.length : 999
-                return aAvg - bAvg // worst variance first
-              }).map(([cat, d]) => {
+              <tbody>{Object.entries(stats.byCat).map(([cat, d]) => {
                 const hp = d.pricedCount > 0 ? (d.correct / d.pricedCount * 100) : null
                 const av = d.varPcts.length ? d.varPcts.reduce((s, v) => s + v, 0) / d.varPcts.length : null
+                return { cat, d, hp, av }
+              }).sort((a, b) => {
+                let va, vb
+                switch(catSort.col) {
+                  case 'cat': va = a.cat; vb = b.cat; break
+                  case 'count': va = a.d.count; vb = b.d.count; break
+                  case 'health': va = a.hp ?? -999; vb = b.hp ?? -999; break
+                  default: va = a.av ?? 999; vb = b.av ?? 999
+                }
+                if (typeof va === 'string') return catSort.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+                return catSort.dir === 'asc' ? va - vb : vb - va
+              }).map(({ cat, d, hp, av }) => {
                 const hc = hp === null ? COLORS.textMuted : hp >= 70 ? COLORS.green : hp >= 40 ? COLORS.amber : COLORS.red
                 return <tr key={cat} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                   <td style={{ padding: '8px 10px', fontWeight: 600, color: COLORS.text, fontSize: 11 }}>{cat}</td>
@@ -217,17 +239,28 @@ export default function AnalyticsPage({ skus, skuCosts, setSelectedSku, userName
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr style={{ borderBottom: `1px solid ${COLORS.border}`, position: 'sticky', top: 0, background: COLORS.surface }}>
-                {['Seller', 'SKUs', 'Under', 'Health', 'Avg Var %'].map(h => (
-                  <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Seller' ? 'left' : 'right', fontSize: 10, fontWeight: 700, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                ))}
+                <TH sort={sellerSort} setSort={setSellerSort} col="seller" align="left">Seller</TH>
+                <TH sort={sellerSort} setSort={setSellerSort} col="count">SKUs</TH>
+                <TH sort={sellerSort} setSort={setSellerSort} col="under">Under</TH>
+                <TH sort={sellerSort} setSort={setSellerSort} col="health">Health</TH>
+                <TH sort={sellerSort} setSort={setSellerSort} col="avgVar">Avg Var %</TH>
               </tr></thead>
-              <tbody>{Object.entries(stats.bySeller).sort((a, b) => {
-                const aAvg = a[1].varPcts.length ? a[1].varPcts.reduce((s, v) => s + v, 0) / a[1].varPcts.length : 999
-                const bAvg = b[1].varPcts.length ? b[1].varPcts.reduce((s, v) => s + v, 0) / b[1].varPcts.length : 999
-                return aAvg - bAvg
-              }).slice(0, 15).map(([seller, d]) => {
+              <tbody>{Object.entries(stats.bySeller).map(([seller, d]) => {
                 const hp = d.pricedCount > 0 ? (d.correct / d.pricedCount * 100) : null
                 const av = d.varPcts.length ? d.varPcts.reduce((s, v) => s + v, 0) / d.varPcts.length : null
+                return { seller, d, hp, av }
+              }).sort((a, b) => {
+                let va, vb
+                switch(sellerSort.col) {
+                  case 'seller': va = a.seller; vb = b.seller; break
+                  case 'count': va = a.d.count; vb = b.d.count; break
+                  case 'under': va = a.d.underpriced; vb = b.d.underpriced; break
+                  case 'health': va = a.hp ?? -999; vb = b.hp ?? -999; break
+                  default: va = a.av ?? 999; vb = b.av ?? 999
+                }
+                if (typeof va === 'string') return sellerSort.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+                return sellerSort.dir === 'asc' ? va - vb : vb - va
+              }).slice(0, 15).map(({ seller, d, hp, av }) => {
                 const hc = hp === null ? COLORS.textMuted : hp >= 70 ? COLORS.green : hp >= 40 ? COLORS.amber : COLORS.red
                 return <tr key={seller} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                   <td style={{ padding: '8px 10px', fontWeight: 600, color: COLORS.text, fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seller}</td>

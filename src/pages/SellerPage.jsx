@@ -183,6 +183,37 @@ export default function SellerPage({ skus, skuCosts, setSelectedSku }) {
   }, [skus, skuCosts])
 
   const selected = selectedSeller ? sellerData.find(s => s.name === selectedSeller) : null
+  const [slSort, setSlSort] = useState({ col: 'score', dir: 'asc' })
+
+  // Sortable header helper
+  const STH = ({ col, children, align }) => {
+    const active = slSort.col === col
+    return (
+      <th onClick={() => setSlSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' })}
+        style={{ padding: '10px 12px', textAlign: align || 'center', fontSize: 10, fontWeight: 700, color: active ? COLORS.accent : COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+        {children} {active && <Icon name={slSort.dir === 'asc' ? 'arrowUp' : 'arrowDown'} size={10} color={COLORS.accent} style={{ verticalAlign: 'middle' }}/>}
+      </th>
+    )
+  }
+
+  const sortedSellers = useMemo(() => {
+    return [...sellerData].sort((a, b) => {
+      let va, vb
+      switch(slSort.col) {
+        case 'name': va = a.name; vb = b.name; break
+        case 'skus': va = a.items.length; vb = b.items.length; break
+        case 'pricing': va = a.scores.pricingScore; vb = b.scores.pricingScore; break
+        case 'under': va = a.underpriced; vb = b.underpriced; break
+        case 'correct': va = a.correct; vb = b.correct; break
+        case 'over': va = a.overpriced; vb = b.overpriced; break
+        case 'flags': va = a.totalFlags; vb = b.totalFlags; break
+        case 'variance': va = a.priced.length ? a.avgVariance : -999999; vb = b.priced.length ? b.avgVariance : -999999; break
+        default: va = a.scores.score; vb = b.scores.score
+      }
+      if (typeof va === 'string') return slSort.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+      return slSort.dir === 'asc' ? va - vb : vb - va
+    })
+  }, [sellerData, slSort])
 
   return (
     <div style={{ padding: '24px 28px', overflowY: 'auto', flex: 1 }}>
@@ -224,11 +255,18 @@ export default function SellerPage({ skus, skuCosts, setSelectedSku }) {
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead><tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                {['Score', 'Seller', 'SKUs', 'Pricing Accuracy', 'Under', 'Correct', 'Over', 'Attr Flags', 'Avg Variance', ''].map(h => (
-                  <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Seller' ? 'left' : 'center', fontSize: 10, fontWeight: 700, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                ))}
+                <STH col="score">Score</STH>
+                <STH col="name" align="left">Seller</STH>
+                <STH col="skus">SKUs</STH>
+                <STH col="pricing">Pricing Accuracy</STH>
+                <STH col="under">Under</STH>
+                <STH col="correct">Correct</STH>
+                <STH col="over">Over</STH>
+                <STH col="flags">Attr Flags</STH>
+                <STH col="variance">Avg Variance</STH>
+                <th style={{ padding: '10px 12px', width: 30 }}/>
               </tr></thead>
-              <tbody>{sellerData.map(s => {
+              <tbody>{sortedSellers.map(s => {
                 const sc = s.scores.score
                 const scColor = sc >= 75 ? COLORS.green : sc >= 50 ? COLORS.amber : COLORS.red
                 return (

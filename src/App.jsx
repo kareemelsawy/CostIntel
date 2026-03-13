@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { COLORS, setThemeColors } from './lib/constants'
 import { calculateSKUCost, skuToEngineInput } from './lib/engine'
 import { DEFAULT_MATERIALS, DEFAULT_ACCESSORIES, DEFAULT_COMMERCIAL, SAMPLE_SKUS, CATEGORY_MATERIAL_DEFAULTS, DEFAULT_ENGINE_RULES } from './lib/defaults'
@@ -11,6 +11,13 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import PricingPage from './pages/PricingPage'
 import EnginePage from './pages/EnginePage'
 import SellerPage from './pages/SellerPage'
+
+// Memoize heavy page components to prevent re-render on tab switch
+const MemoAnalytics = memo(AnalyticsPage)
+const MemoCatalog = memo(CatalogPage)
+const MemoSellers = memo(SellerPage)
+const MemoEngine = memo(EnginePage)
+const MemoPricing = memo(PricingPage)
 
 // ─── DB Status Badge ─────────────────────────────────────────────────────────
 function DbStatusBadge({ dbStatus: s, hasSupabase, loadFromDB }) {
@@ -315,7 +322,7 @@ export default function App() {
 
   const skuCosts = useMemo(() => {
     const m = {}; skus.forEach(s => { m[s.sku_code] = calculateSKUCost(skuToEngineInput(s), materials, accessories, commercial, false, engineRules?.constants) }); return m
-  }, [skus, materials, accessories, commercial])
+  }, [skus, materials, accessories, commercial, engineRules])
 
   function handleSaveSku(data) {
     if (editingSku?._isNew) {
@@ -421,12 +428,12 @@ export default function App() {
 
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {view === 'analytics' && <AnalyticsPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
-            {view === 'catalog' && <CatalogPage skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} onSyncSkus={syncSkusToSupabase} />}
-            {view === 'sellers' && <SellerPage skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} />}
+            {view === 'analytics' && <MemoAnalytics skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} userName={userName} />}
+            {view === 'catalog' && <MemoCatalog skus={skus} setSkus={setSkus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} setEditingSku={setEditingSku} toast={toast} catDefaults={CATEGORY_MATERIAL_DEFAULTS} onDeleteSkus={deleteSkusFromSupabase} onSyncSkus={syncSkusToSupabase} />}
+            {view === 'sellers' && <MemoSellers skus={skus} skuCosts={skuCosts} setSelectedSku={setSelectedSku} />}
             {view === 'calculator' && <CalculatorPage materials={materials} accessories={accessories} commercial={commercial} engineRules={engineRules} setSkus={setSkus} toast={toast} prefill={calcPrefill} clearPrefill={() => setCalcPrefill(null)} catDefaults={CATEGORY_MATERIAL_DEFAULTS} />}
-            {view === 'engine' && <EnginePage engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
-            {view === 'pricing' && <PricingPage materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}
+            {view === 'engine' && <MemoEngine engineRules={engineRules} setEngineRules={setEngineRules} materials={materials} accessories={accessories} toast={toast} />}
+            {view === 'pricing' && <MemoPricing materials={materials} setMaterials={setMaterials} accessories={accessories} setAccessories={setAccessories} commercial={commercial} setCommercial={setCommercial} setEditingMat={setEditingMat} toast={toast} />}
           </div>
         </main>
       </div>

@@ -86,18 +86,24 @@ export function SKUDetailModal({ sku, materials, accessories, commercial, engine
               {cost.derived_partitions>0&&` · ${cost.derived_partitions} partitions`}
               · Handle: {sku.handle_type||'Normal'}
             </div>
-            {sku.description&&<div style={{fontSize:12,color:COLORS.textDim,marginTop:6,lineHeight:1.5,fontStyle:'italic'}}>{sku.description}</div>}
+            {sku.description&&<div style={{fontSize:12,color:COLORS.textDim,marginTop:8,lineHeight:1.6,padding:'8px 12px',background:COLORS.bg,borderRadius:8,border:`1px solid ${COLORS.border}`,maxHeight:100,overflowY:'auto',whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{sku.description}</div>}
           </div>
         </div>
         <button onClick={onClose} style={{background:'none',border:'none',color:COLORS.textMuted,cursor:'pointer',padding:4}}><Icon name="x" size={18}/></button>
       </div>
 
       {/* Material assignment — editable */}
-      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'flex-end',padding:'12px 14px',background:COLORS.bg,borderRadius:10,border:`1px solid ${COLORS.border}`}}>
-        <div style={{flex:1,minWidth:140}}><label style={lSt()}>Body</label><select value={bodyMat} onChange={e=>setBodyMat(e.target.value)} style={selSt()}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-        <div style={{flex:1,minWidth:140}}><label style={lSt()}>Back</label><select value={backMat} onChange={e=>setBackMat(e.target.value)} style={selSt()}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-        <div style={{flex:1,minWidth:140}}><label style={lSt()}>Door</label><select value={doorMat} onChange={e=>setDoorMat(e.target.value)} style={selSt()}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-        {matChanged&&<Btn size="sm" onClick={handleApplyMaterials}><Icon name="save" size={12}/> Save</Btn>}
+      <div style={{padding:'12px 14px',background:COLORS.bg,borderRadius:10,border:`1px solid ${COLORS.border}`,marginBottom:16}}>
+        {sku._detected_material&&<div style={{marginBottom:8,fontSize:11,display:'flex',alignItems:'center',gap:6}}>
+          <span style={{fontWeight:700,color:COLORS.purple,padding:'2px 8px',borderRadius:5,background:COLORS.purple+'18',fontSize:10}}>Auto-detected</span>
+          <span style={{color:COLORS.textDim}}>Material from description: <strong style={{color:COLORS.text}}>{sku._detected_material}</strong></span>
+        </div>}
+        <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
+          <div style={{flex:1,minWidth:140}}><label style={lSt()}>Body</label><select value={bodyMat} onChange={e=>setBodyMat(e.target.value)} style={selSt()}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+          <div style={{flex:1,minWidth:140}}><label style={lSt()}>Back</label><select value={backMat} onChange={e=>setBackMat(e.target.value)} style={selSt()}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+          <div style={{flex:1,minWidth:140}}><label style={lSt()}>Door</label><select value={doorMat} onChange={e=>setDoorMat(e.target.value)} style={selSt()}>{matOpts.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+          {matChanged&&<Btn size="sm" onClick={handleApplyMaterials}><Icon name="save" size={12}/> Save</Btn>}
+        </div>
       </div>
 
       <div style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap'}}>
