@@ -184,7 +184,17 @@ export default function App() {
   const [materials, setMaterials] = useState(() => loadLS(LS_MATS, DEFAULT_MATERIALS))
   const [accessories, setAccessories] = useState(() => loadLS(LS_ACCS, DEFAULT_ACCESSORIES))
   const [commercial, setCommercial] = useState(() => loadLS(LS_COMM, DEFAULT_COMMERCIAL))
-  const [engineRules, setEngineRules] = useState(() => loadLS(LS_ENGINE, DEFAULT_ENGINE_RULES))
+  const [engineRules, setEngineRules] = useState(() => {
+    const saved = loadLS(LS_ENGINE, null)
+    if (!saved) return DEFAULT_ENGINE_RULES
+    // Merge: fill in any new default properties that don't exist in the saved version
+    return {
+      ...DEFAULT_ENGINE_RULES,
+      ...saved,
+      // Always ensure materialDetectionRules exists (new in v1)
+      materialDetectionRules: saved.materialDetectionRules || DEFAULT_ENGINE_RULES.materialDetectionRules,
+    }
+  })
   const [selectedSku, setSelectedSku] = useState(null)
   const [editingSku, setEditingSku] = useState(null)
   const [editingMat, setEditingMat] = useState(null)
