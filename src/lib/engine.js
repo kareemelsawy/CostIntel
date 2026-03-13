@@ -116,9 +116,9 @@ function calcAccessories(sku, accList, useGood, C = {}) {
   }
 
   // 4. HANDLES — based on Handle Type attribute
-  //    Handleless = no handles; Normal = handles on doors + drawers
+  //    Handleless/Hidden = no handles; Normal = handles on doors + drawers
   //    For Sliding: handles are recessed/grip type (HANDLE_SLIDE20)
-  if (ht !== 'Handleless') {
+  if (ht !== 'Handleless' && ht !== 'Hidden') {
     const totalHandles = dc + dwc
     if (totalHandles > 0) {
       const hid = isSliding ? 'HANDLE_SLIDE20' : 'HANDLE_128'
@@ -281,20 +281,35 @@ export function skuToEngineInput(row) {
 export function csvRowToSku(row, catDefaults) {
   const cat = row['Sub Category'] || 'Wardrobes'
   const def = catDefaults[cat] || catDefaults['Other']
-  const hasMirror = (row['Has Mirror']||'').toUpperCase() === 'YES'
+  const hasMirror = (row['Has Mirror']||'').trim().toUpperCase() === 'YES'
+
+  // Normalize Door Type (case-insensitive)
+  const rawDoor = (row['Door Type']||'').trim()
+  const doorNorm = rawDoor.toLowerCase()
+  const doorType = doorNorm === 'hinged' ? 'Hinged' : doorNorm === 'sliding' ? 'Sliding' : doorNorm === 'open' ? 'Open' : (rawDoor || 'Hinged')
+
+  // Normalize Handle Type (case-insensitive, map Hidden → Handleless)
+  const rawHandle = (row['Handle Type']||'').trim()
+  const handleNorm = rawHandle.toLowerCase()
+  const handleType = handleNorm === 'normal' ? 'Normal' : (handleNorm === 'handleless' || handleNorm === 'hidden') ? 'Handleless' : (rawHandle || 'Normal')
+
+  // Dimensions — use 0 for missing/invalid, don't silently default to 100/60/210
+  const w = Number(row['Width (cm)']) || 0
+  const d = Number(row['Depth (cm)']) || 0
+  const h = Number(row['Height (cm)']) || 0
+
   return {
     sku_code: (row['SKU'] || '').slice(0, 100), name: row['Product name'] || '',
     description: row['Description'] || '',
     image_link: (row['Image Link']||'').match(/^https?:\/\//i) ? row['Image Link'] : '', seller: row['Seller Name'] || '',
     sub_category: cat, commercial_material: row['Commercial Material'] || 'MDF',
-    width_cm: Number(row['Width (cm)'])||100, depth_cm: Number(row['Depth (cm)'])||60,
-    height_cm: Number(row['Height (cm)'])||210, door_type: row['Door Type'] || 'Hinged',
+    width_cm: w, depth_cm: d, height_cm: h, door_type: doorType,
     internal_division: row['Internal Division'] || 'NO', unit_type: row['Unit Type'] || 'Floor Standing',
     spaces_count: Number(row['No. of Spaces'])||0, hangers_count: Number(row['No. of Hangers'])||0,
     drawers_count: Number(row['No. of Drawers'])||0, shelves_count: Number(row['No. of Shelves'])||0,
     has_mirror: hasMirror, mirror_count: Number(row['Mirror Count'])||0,
     primary_color: row['Primary Color'] || '', has_secondary_color: row['Has Secondary Color'] || 'NO',
-    handle_type: row['Handle Type'] || 'Normal', has_back_panel: row['Has Back Panel'] || 'Close',
+    handle_type: handleType, has_back_panel: row['Has Back Panel'] || 'Close',
     doors_count: Number(row['No. of Doors'])||0,
     selling_price: Number(row['Selling Price'])||0,
     // Materials auto-assigned by category

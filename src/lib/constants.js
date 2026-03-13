@@ -19,13 +19,18 @@ export function setThemeColors(isDark) {
 }
 
 export const CATEGORIES = [
-  'Wardrobes','Tv Unit','Dressings','Shoe Racks','Commodes','Buffet',
+  'Wardrobes','Dressings','Tv Unit','Wall Tv Units','Tv Sets','Shoe Racks','Commodes','Buffet',
   'Display Unit','Unit Drawers','Kitchen Storage Units','Bathroom Storage Units',
-  'File Cabinets & Bookcases','Office Wardrobes','Coffee Corners','Other',
+  'File Cabinets & Bookcases','Office Wardrobes','Office Drawer Unit','Coffee Corners',
+  'Accent Cabinets','Center Tables','Side Tables','Table Sets','Consoles','Entrance Tables',
+  'Shelves','Kids Storage','Makeup Vanities','Mirrors','Bathroom Mirrors',
+  'Interior Doors','Exterior Doors','Clothes Hangers','Towel Rails & Holders','Pets House',
+  'Other',
 ]
 export const DOOR_TYPES = ['Hinged','Sliding','Open']
-export const HANDLE_TYPES = ['Normal','Handleless']
+export const HANDLE_TYPES = ['Normal','Handleless','Hidden']
 export const UNIT_TYPES = ['Floor Standing','Wall Mounted']
+export const BACK_PANEL_TYPES = ['Close','Open','Semi-Close']
 
 // CSV columns — matches the import template exactly
 export const CSV_COLUMNS = [

@@ -108,59 +108,214 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
     a.click()
     toast('Template downloaded')
   }
+  // ── Robust CSV parser — handles quoted newlines, escaped quotes, BOM ──────
+  function parseCSV(text) {
+    const rows = []
+    let cur = [], field = '', inQ = false, i = 0
+    while (i < text.length) {
+      const ch = text[i]
+      if (inQ) {
+        if (ch === '"') {
+          if (i + 1 < text.length && text[i + 1] === '"') {
+            field += '"'; i += 2 // escaped quote ""
+          } else {
+            inQ = false; i++ // end of quoted field
+          }
+        } else {
+          field += ch; i++
+        }
+      } else {
+        if (ch === '"') { inQ = true; i++ }
+        else if (ch === ',') { cur.push(field.trim()); field = ''; i++ }
+        else if (ch === '\n' || ch === '\r') {
+          cur.push(field.trim()); field = ''
+          if (ch === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++ // skip \r\n
+          if (cur.length > 1 || cur[0] !== '') rows.push(cur)
+          cur = []; i++
+        } else {
+          field += ch; i++
+        }
+      }
+    }
+    // Last field/row
+    cur.push(field.trim())
+    if (cur.length > 1 || cur[0] !== '') rows.push(cur)
+    return rows
+  }
+
   function handleImport(e){
-    const file=e.target.files?.[0];if(!file)return
+    const file=e.target.files?.[0]
+    if(e.target) e.target.value=''
+    if(!file)return
     setImportProgress({phase:'reading',current:0,total:0,label:'Reading file…'})
     const reader=new FileReader()
+    reader.onerror=()=>{setImportProgress(null);toast('Failed to read file','error')}
     reader.onload=async(ev)=>{
       try{
-        const raw=ev.target.result.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n')
-        const lines=raw.split('\n').filter(l=>l.trim())
-        if(lines.length<2){setImportProgress(null);toast('Empty file — no data rows found','error');return}
-        const total=lines.length-1
-        const hdrs=lines[0].split(',').map(h=>h.trim())
-        setImportProgress({phase:'parsing',current:0,total,label:`Parsing ${total.toLocaleString()} rows…`})
+        const raw=ev.target.result.replace(/^\uFEFF/,'') // strip BOM
+        setImportProgress({phase:'parsing',current:0,total:0,label:'Parsing CSV…'})
+        await new Promise(r=>setTimeout(r,50))
 
-        // Parse in chunks so UI stays responsive
+        const allRows = parseCSV(raw)
+        if(allRows.length<2){setImportProgress(null);toast('Empty file — no data rows found','error');return}
+
+        const hdrs = allRows[0].map(h => h.replace(/^"|"$/g,'').trim())
+        const dataRows = allRows.slice(1)
+        const total = dataRows.length
+
+        // ── Header validation ──
+        const requiredHeaders = ['SKU', 'Width (cm)', 'Depth (cm)', 'Height (cm)']
+        const missingRequired = requiredHeaders.filter(h => !hdrs.includes(h))
+        if (missingRequired.length > 0) {
+          setImportProgress(null)
+          toast(`Missing required columns: ${missingRequired.join(', ')}. Check your CSV headers.`, 'error')
+          return
+        }
+        // Check for known headers to warn about unmapped columns
+        const knownHeaders = new Set(CSV_COLUMNS)
+        const unmappedHeaders = hdrs.filter(h => h && !knownHeaders.has(h))
+
+        setImportProgress({phase:'parsing',current:0,total,label:`Parsing ${total.toLocaleString()} rows…`})
+        await new Promise(r=>setTimeout(r,0))
+
         const CHUNK=500
         const imported=[]
-        for(let i=1;i<lines.length;i+=CHUNK){
-          const end=Math.min(i+CHUNK,lines.length)
+        const warnings=[] // { rowNum, sku, issues[] }
+        let skippedEmpty = 0
+
+        for(let i=0;i<dataRows.length;i+=CHUNK){
+          const end=Math.min(i+CHUNK,dataRows.length)
           for(let j=i;j<end;j++){
-            const vals=[];let cur='',inQ=false
-            for(const ch of lines[j]){if(ch==='"'){inQ=!inQ}else if(ch===','&&!inQ){vals.push(cur.trim());cur=''}else cur+=ch}
-            vals.push(cur.trim())
-            const row={};hdrs.forEach((h,k)=>{row[h]=vals[k]?.replace(/^"|"$/g,'').replace(/#N\/A/g,'').trim()})
-            if(!row['SKU']&&!row['Product name'])continue
-            imported.push(csvRowToSku(row,catDefaults))
+            const vals = dataRows[j]
+            const row = {}
+            hdrs.forEach((h,k)=>{
+              row[h] = (vals[k] || '').replace(/^"|"$/g,'').replace(/#N\/A/gi,'').trim()
+            })
+
+            // Skip completely empty rows
+            if(!row['SKU'] && !row['Product name']) { skippedEmpty++; continue }
+
+            // Per-row validation
+            const rowIssues = []
+            const skuCode = row['SKU'] || ''
+            if (!skuCode) rowIssues.push('Missing SKU code')
+
+            // Numeric field validation
+            const numFields = [
+              { key: 'Width (cm)', label: 'Width', min: 0, max: 1000 },
+              { key: 'Depth (cm)', label: 'Depth', min: 0, max: 200 },
+              { key: 'Height (cm)', label: 'Height', min: 0, max: 500 },
+              { key: 'No. of Doors', label: 'Doors', min: 0, max: 20 },
+              { key: 'No. of Drawers', label: 'Drawers', min: 0, max: 20 },
+              { key: 'No. of Shelves', label: 'Shelves', min: 0, max: 50 },
+              { key: 'No. of Spaces', label: 'Spaces', min: 0, max: 20 },
+              { key: 'No. of Hangers', label: 'Hangers', min: 0, max: 20 },
+              { key: 'Selling Price', label: 'Price', min: 0, max: 9999999 },
+            ]
+            numFields.forEach(nf => {
+              const rawVal = row[nf.key]
+              if (rawVal !== undefined && rawVal !== '') {
+                const num = Number(rawVal)
+                if (isNaN(num)) rowIssues.push(`${nf.label}: "${rawVal}" is not a number`)
+                else if (num < nf.min) rowIssues.push(`${nf.label}: ${num} below minimum (${nf.min})`)
+                else if (num > nf.max) rowIssues.push(`${nf.label}: ${num} above maximum (${nf.max})`)
+              }
+            })
+
+            // Enum validation (case-insensitive — csvRowToSku normalizes these)
+            const rawDoor = (row['Door Type']||'').trim().toLowerCase()
+            if (rawDoor && !['hinged','sliding','open'].includes(rawDoor)) {
+              rowIssues.push(`Door Type: "${row['Door Type']}" invalid (expected Hinged/Sliding/Open)`)
+            }
+            const rawHandle = (row['Handle Type']||'').trim().toLowerCase()
+            if (rawHandle && !['normal','handleless','hidden'].includes(rawHandle)) {
+              rowIssues.push(`Handle Type: "${row['Handle Type']}" invalid (expected Normal/Handleless/Hidden)`)
+            }
+
+            // Warn on zero dimensions (not an error — row still imports)
+            const w = Number(row['Width (cm)'])||0, d = Number(row['Depth (cm)'])||0, h = Number(row['Height (cm)'])||0
+            if (w === 0 || d === 0 || h === 0) {
+              rowIssues.push('Missing or zero dimensions — cost calculation will fail')
+            }
+
+            if (rowIssues.length > 0) {
+              warnings.push({ rowNum: j + 2, sku: skuCode || `Row ${j+2}`, issues: rowIssues })
+            }
+
+            // Only skip if critical fields are truly broken (non-numeric dimensions)
+            const w = Number(row['Width (cm)']), d = Number(row['Depth (cm)']), h = Number(row['Height (cm)'])
+            if ((row['Width (cm)'] && isNaN(w)) || (row['Depth (cm)'] && isNaN(d)) || (row['Height (cm)'] && isNaN(h))) {
+              continue // skip rows with unparseable dimensions
+            }
+
+            imported.push(csvRowToSku(row, catDefaults))
           }
-          setImportProgress({phase:'parsing',current:Math.min(i+CHUNK-1,total),total,label:`Parsing… ${Math.min(i+CHUNK-1,total).toLocaleString()} / ${total.toLocaleString()}`})
-          await new Promise(r=>setTimeout(r,0)) // yield to UI
+          const done=Math.min(i+CHUNK,total)
+          setImportProgress({phase:'parsing',current:done,total,label:`Parsed ${done.toLocaleString()} of ${total.toLocaleString()} rows`})
+          await new Promise(r=>setTimeout(r,0))
         }
 
         if(imported.length===0){setImportProgress(null);toast('No valid SKU rows found in file','error');return}
 
-        setImportProgress({phase:'checking',current:imported.length,total:imported.length,label:`Checking ${imported.length.toLocaleString()} SKUs for duplicates…`})
-        await new Promise(r=>setTimeout(r,0))
+        // Check for duplicates
+        const existing=new Set(skus.map(s=>s.sku_code))
+        const newSkus=imported.filter(s=>!existing.has(s.sku_code))
+        const dupeSkus=imported.filter(s=>existing.has(s.sku_code))
 
-        setSkus(prev=>{
-          const existing=new Set(prev.map(s=>s.sku_code))
-          const duplicates=imported.filter(s=>existing.has(s.sku_code)).map(s=>s.sku_code)
-          if(duplicates.length>0){
-            setImportProgress(null)
-            toast(`Blocked — ${duplicates.length} duplicate SKU code${duplicates.length!==1?'s':''}: ${duplicates.slice(0,3).join(', ')}${duplicates.length>3?` +${duplicates.length-3} more`:''}`, 'error')
-            return prev
-          }
-          const result=[...prev,...imported]
-          setImportProgress({phase:'syncing',current:imported.length,total:imported.length,label:`Saving ${imported.length.toLocaleString()} SKUs to database…`})
-          onSyncSkus?.(result)
-          setTimeout(()=>setImportProgress(null),1500)
-          toast(`✓ Imported ${imported.length.toLocaleString()} SKU${imported.length!==1?'s':''}`)
-          return result
-        })
+        const importMeta = { warnings, skippedEmpty, unmappedHeaders, totalParsed: imported.length }
+
+        if(dupeSkus.length>0 && newSkus.length===0){
+          setImportProgress({
+            phase:'duplicates', current:imported.length, total:imported.length,
+            label:`All ${dupeSkus.length} SKUs already exist in catalog.`,
+            dupeCount:dupeSkus.length, newCount:0, imported, newSkus, dupeSkus, ...importMeta,
+          })
+        } else if(dupeSkus.length>0){
+          setImportProgress({
+            phase:'duplicates', current:imported.length, total:imported.length,
+            label:`${newSkus.length} new + ${dupeSkus.length} already exist.`,
+            dupeCount:dupeSkus.length, newCount:newSkus.length, imported, newSkus, dupeSkus, ...importMeta,
+          })
+        } else {
+          finishImport(newSkus, [], 'add', importMeta)
+        }
       }catch(err){setImportProgress(null);toast('Import failed: '+err.message,'error')}
     }
-    reader.readAsText(file,'utf-8');e.target.value=''
+    reader.readAsText(file,'utf-8')
+  }
+
+  function finishImport(newSkus, dupeSkus, mode, meta) {
+    setSkus(prev => {
+      let result
+      if (mode === 'add') {
+        result = [...prev, ...newSkus]
+      } else if (mode === 'merge') {
+        const dupeMap = {}
+        dupeSkus.forEach(s => { dupeMap[s.sku_code] = s })
+        result = prev.map(s => dupeMap[s.sku_code] ? { ...s, ...dupeMap[s.sku_code] } : s)
+        result = [...result, ...newSkus]
+      } else {
+        const dupeMap = {}
+        dupeSkus.forEach(s => { dupeMap[s.sku_code] = s })
+        result = prev.map(s => dupeMap[s.sku_code] ? { ...s, ...dupeMap[s.sku_code] } : s)
+      }
+      onSyncSkus?.(result)
+      return result
+    })
+
+    const totalAffected = newSkus.length + (mode !== 'add' ? dupeSkus.length : 0)
+    const summary = []
+    if (newSkus.length > 0) summary.push(`${newSkus.length} added`)
+    if (dupeSkus.length > 0 && mode !== 'add') summary.push(`${dupeSkus.length} updated`)
+    if (dupeSkus.length > 0 && mode === 'add') summary.push(`${dupeSkus.length} skipped`)
+
+    setImportProgress({
+      phase: 'done', current: totalAffected, total: totalAffected,
+      label: summary.join(', '),
+      newCount: newSkus.length, dupeCount: mode !== 'add' ? dupeSkus.length : 0,
+      ...(meta || {}),
+    })
+    toast(`✓ Import complete: ${summary.join(', ')}`)
   }
 
   const cbStyle = { width: 15, height: 15, cursor: 'pointer', accentColor: COLORS.accent }
@@ -168,23 +323,122 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
   return (
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1,position:'relative'}}>
       {importProgress && (
-        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:COLORS.surface,borderRadius:16,padding:'32px 40px',width:380,boxShadow:'0 20px 60px rgba(0,0,0,0.5)',border:`1px solid ${COLORS.border}`}}>
-            <div style={{fontSize:15,fontWeight:700,color:COLORS.text,marginBottom:6}}>
-              {importProgress.phase==='syncing' ? '✓ Upload Complete' : '⟳ Uploading SKUs…'}
-            </div>
-            <div style={{fontSize:12,color:COLORS.textMuted,marginBottom:16}}>{importProgress.label}</div>
-            {importProgress.total>0 && importProgress.phase!=='syncing' && (
-              <>
-                <div style={{background:COLORS.bg,borderRadius:999,height:8,overflow:'hidden',marginBottom:8}}>
-                  <div style={{height:'100%',borderRadius:999,background:COLORS.accent,width:`${Math.round((importProgress.current/importProgress.total)*100)}%`,transition:'width 0.2s'}}/>
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)'}}>
+          <div style={{background:COLORS.surface,borderRadius:16,padding:'28px 36px',width:420,boxShadow:'0 20px 60px rgba(0,0,0,0.5)',border:`1px solid ${COLORS.border}`}}>
+
+            {/* READING / PARSING */}
+            {(importProgress.phase==='reading'||importProgress.phase==='parsing') && (<>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+                <div style={{width:24,height:24,border:`3px solid ${COLORS.accent}`,borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
+                <div style={{fontSize:15,fontWeight:700,color:COLORS.text}}>Uploading SKUs…</div>
+              </div>
+              <div style={{fontSize:12,color:COLORS.textMuted,marginBottom:16}}>{importProgress.label}</div>
+              {importProgress.total>0 && (
+                <>
+                  <div style={{background:COLORS.bg,borderRadius:999,height:8,overflow:'hidden',marginBottom:6}}>
+                    <div style={{height:'100%',borderRadius:999,background:COLORS.accent,width:`${Math.round((importProgress.current/importProgress.total)*100)}%`,transition:'width 0.2s'}}/>
+                  </div>
+                  <div style={{fontSize:11,color:COLORS.textMuted,textAlign:'right'}}>{Math.round((importProgress.current/importProgress.total)*100)}%</div>
+                </>
+              )}
+            </>)}
+
+            {/* DUPLICATES — ask user what to do */}
+            {importProgress.phase==='duplicates' && (<>
+              <div style={{fontSize:15,fontWeight:700,color:COLORS.amber,marginBottom:8}}>⚠ Duplicate SKUs Found</div>
+              <div style={{fontSize:13,color:COLORS.text,marginBottom:6,lineHeight:1.6}}>{importProgress.label}</div>
+              <div style={{fontSize:12,color:COLORS.textMuted,marginBottom:12,lineHeight:1.5}}>
+                {importProgress.newCount>0 && <div style={{marginBottom:4}}><span style={{color:COLORS.green,fontWeight:700}}>{importProgress.newCount}</span> new SKUs ready to add</div>}
+                <div><span style={{color:COLORS.amber,fontWeight:700}}>{importProgress.dupeCount}</span> SKUs already exist in catalog</div>
+              </div>
+              {/* Show parsing warnings if any */}
+              {importProgress.warnings?.length > 0 && (
+                <div style={{marginBottom:12,padding:'8px 12px',background:COLORS.red+'10',border:`1px solid ${COLORS.red}25`,borderRadius:8,maxHeight:120,overflowY:'auto'}}>
+                  <div style={{fontSize:11,fontWeight:700,color:COLORS.red,marginBottom:4}}>{importProgress.warnings.length} row{importProgress.warnings.length!==1?'s':''} with issues:</div>
+                  {importProgress.warnings.slice(0,10).map((w,i)=>(
+                    <div key={i} style={{fontSize:10,color:COLORS.textMuted,lineHeight:1.5}}>
+                      <span style={{color:COLORS.text,fontWeight:600}}>Row {w.rowNum}</span> ({w.sku}): {w.issues.join('; ')}
+                    </div>
+                  ))}
+                  {importProgress.warnings.length>10 && <div style={{fontSize:10,color:COLORS.textMuted,marginTop:4}}>…and {importProgress.warnings.length-10} more</div>}
                 </div>
-                <div style={{fontSize:11,color:COLORS.textMuted,textAlign:'right'}}>{Math.round((importProgress.current/importProgress.total)*100)}%</div>
-              </>
-            )}
-            {importProgress.phase==='syncing' && (
-              <div style={{textAlign:'center',fontSize:28,marginTop:8}}>🎉</div>
-            )}
+              )}
+              {importProgress.unmappedHeaders?.length > 0 && (
+                <div style={{marginBottom:12,padding:'8px 12px',background:COLORS.amber+'10',border:`1px solid ${COLORS.amber}25`,borderRadius:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:COLORS.amber,marginBottom:2}}>Unmapped columns (ignored):</div>
+                  <div style={{fontSize:10,color:COLORS.textMuted}}>{importProgress.unmappedHeaders.join(', ')}</div>
+                </div>
+              )}
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {importProgress.newCount>0 && (
+                  <button onClick={()=>finishImport(importProgress.newSkus,importProgress.dupeSkus,'merge',{warnings:importProgress.warnings,skippedEmpty:importProgress.skippedEmpty,unmappedHeaders:importProgress.unmappedHeaders,totalParsed:importProgress.totalParsed})} style={{
+                    padding:'10px 16px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,
+                    background:COLORS.accent,color:'#fff',textAlign:'left',
+                  }}>
+                    Add new + Update existing ({importProgress.newCount + importProgress.dupeCount} total)
+                  </button>
+                )}
+                {importProgress.newCount>0 && (
+                  <button onClick={()=>finishImport(importProgress.newSkus,[],'add',{warnings:importProgress.warnings,skippedEmpty:importProgress.skippedEmpty,unmappedHeaders:importProgress.unmappedHeaders,totalParsed:importProgress.totalParsed})} style={{
+                    padding:'10px 16px',borderRadius:10,border:`1px solid ${COLORS.border}`,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:13,
+                    background:COLORS.surface,color:COLORS.text,textAlign:'left',
+                  }}>
+                    Add only new ({importProgress.newCount}), skip duplicates
+                  </button>
+                )}
+                {importProgress.dupeCount>0 && (
+                  <button onClick={()=>finishImport([],importProgress.dupeSkus,'replace',{warnings:importProgress.warnings,skippedEmpty:importProgress.skippedEmpty,unmappedHeaders:importProgress.unmappedHeaders,totalParsed:importProgress.totalParsed})} style={{
+                    padding:'10px 16px',borderRadius:10,border:`1px solid ${COLORS.amber}40`,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:13,
+                    background:COLORS.amber+'12',color:COLORS.amber,textAlign:'left',
+                  }}>
+                    Update existing only ({importProgress.dupeCount})
+                  </button>
+                )}
+                <button onClick={()=>setImportProgress(null)} style={{
+                  padding:'10px 16px',borderRadius:10,border:`1px solid ${COLORS.border}`,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:13,
+                  background:'transparent',color:COLORS.textMuted,textAlign:'left',
+                }}>
+                  Cancel — don't import anything
+                </button>
+              </div>
+            </>)}
+
+            {/* DONE — confirmation with warnings summary */}
+            {importProgress.phase==='done' && (<>
+              <div style={{textAlign:'center',padding:'8px 0'}}>
+                <div style={{fontSize:36,marginBottom:8}}>✅</div>
+                <div style={{fontSize:16,fontWeight:800,color:COLORS.green,marginBottom:6}}>Import Complete</div>
+                <div style={{fontSize:13,color:COLORS.text,marginBottom:4}}>{importProgress.label}</div>
+                {importProgress.newCount>0 && <div style={{fontSize:12,color:COLORS.green}}>+{importProgress.newCount} new SKUs added</div>}
+                {importProgress.dupeCount>0 && <div style={{fontSize:12,color:COLORS.amber}}>{importProgress.dupeCount} existing SKUs updated</div>}
+                {importProgress.skippedEmpty>0 && <div style={{fontSize:11,color:COLORS.textMuted,marginTop:4}}>{importProgress.skippedEmpty} empty rows skipped</div>}
+              </div>
+              {/* Warnings summary */}
+              {importProgress.warnings?.length > 0 && (
+                <div style={{marginTop:12,padding:'10px 14px',background:COLORS.amber+'10',border:`1px solid ${COLORS.amber}25`,borderRadius:8,maxHeight:160,overflowY:'auto'}}>
+                  <div style={{fontSize:11,fontWeight:700,color:COLORS.amber,marginBottom:6}}>⚠ {importProgress.warnings.length} row{importProgress.warnings.length!==1?'s':''} imported with issues:</div>
+                  {importProgress.warnings.slice(0,15).map((w,i)=>(
+                    <div key={i} style={{fontSize:10,color:COLORS.textMuted,lineHeight:1.6,paddingLeft:8,borderLeft:`2px solid ${COLORS.amber}30`,marginBottom:3}}>
+                      <span style={{color:COLORS.text,fontWeight:600}}>Row {w.rowNum}</span> <span style={{color:COLORS.accent,fontFamily:'monospace',fontSize:9}}>{w.sku}</span>
+                      <div style={{color:COLORS.textMuted}}>{w.issues.join(' · ')}</div>
+                    </div>
+                  ))}
+                  {importProgress.warnings.length>15 && <div style={{fontSize:10,color:COLORS.textMuted,marginTop:4,fontWeight:600}}>…and {importProgress.warnings.length-15} more rows with issues</div>}
+                </div>
+              )}
+              {importProgress.unmappedHeaders?.length > 0 && (
+                <div style={{marginTop:8,padding:'8px 12px',background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8}}>
+                  <div style={{fontSize:10,fontWeight:700,color:COLORS.textMuted,marginBottom:2}}>Columns in file not recognized (ignored):</div>
+                  <div style={{fontSize:10,color:COLORS.textMuted}}>{importProgress.unmappedHeaders.join(', ')}</div>
+                </div>
+              )}
+              <button onClick={()=>setImportProgress(null)} style={{
+                width:'100%',marginTop:16,padding:'10px 16px',borderRadius:10,border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,
+                background:COLORS.accent,color:'#fff',
+              }}>
+                Done
+              </button>
+            </>)}
           </div>
         </div>
       )}
