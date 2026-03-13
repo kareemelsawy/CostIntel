@@ -242,9 +242,9 @@ export default function CatalogPage({ skus, setSkus, skuCosts, setSelectedSku, s
               warnings.push({ rowNum: j + 2, sku: skuCode || `Row ${j+2}`, issues: rowIssues })
             }
 
-            // Only skip if critical fields are truly broken (non-numeric dimensions)
-            const w = Number(row['Width (cm)']), d = Number(row['Depth (cm)']), h = Number(row['Height (cm)'])
-            if ((row['Width (cm)'] && isNaN(w)) || (row['Depth (cm)'] && isNaN(d)) || (row['Height (cm)'] && isNaN(h))) {
+            // Only skip if critical fields are truly broken (non-numeric text in dimension fields)
+            const rawW = row['Width (cm)'], rawD = row['Depth (cm)'], rawH = row['Height (cm)']
+            if ((rawW && isNaN(Number(rawW))) || (rawD && isNaN(Number(rawD))) || (rawH && isNaN(Number(rawH)))) {
               continue // skip rows with unparseable dimensions
             }
 
